@@ -419,6 +419,112 @@ function FinanceiroTab() {
   );
 }
 
+function PDVTab() {
+  const { toast } = useToast();
+  
+  const { data: orders = [], isLoading } = useQuery<Order[]>({
+    queryKey: ['/api/orders'],
+  });
+
+  const updateStatusMutation = useMutation({
+    mutationFn: async ({ orderId, status }: { orderId: string; status: OrderStatus }) => {
+      return apiRequest('PATCH', `/api/orders/${orderId}/status`, { status });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/orders'] });
+      toast({ title: 'Status atualizado!' });
+    },
+  });
+
+  const counterOrders = orders.filter(order => order.orderType === 'counter');
+
+  return (
+    <div className="space-y-6">
+      <h2 className="font-serif text-3xl text-primary">Vendas Balcao (PDV)</h2>
+      
+      {isLoading ? (
+        <div className="grid gap-4">
+          {[1,2,3].map(i => (
+            <Card key={i} className="animate-pulse">
+              <CardContent className="h-32" />
+            </Card>
+          ))}
+        </div>
+      ) : counterOrders.length === 0 ? (
+        <Card>
+          <CardContent className="py-12 text-center text-muted-foreground">
+            Nenhuma venda de balcao encontrada
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="grid gap-4">
+          {counterOrders.map(order => (
+            <Card key={order.id} data-testid={`card-pdv-order-${order.id}`}>
+              <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2 pb-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <CardTitle className="text-lg">Venda #{order.id.slice(0, 8)}</CardTitle>
+                  <StatusBadge status={order.status as OrderStatus} />
+                </div>
+                <span className="text-sm text-muted-foreground">{formatDate(order.createdAt)}</span>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex flex-wrap gap-4 text-sm">
+                  <div>
+                    <span className="text-muted-foreground">Cliente: </span>
+                    <span className="font-medium">{order.customerName || 'Balcao'}</span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Total: </span>
+                    <span className="font-semibold text-primary">{formatCurrency(order.total)}</span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Pagamento: </span>
+                    <span>{PAYMENT_METHOD_LABELS[order.paymentMethod as PaymentMethod]}</span>
+                  </div>
+                </div>
+                
+                <div className="flex flex-wrap gap-2">
+                  {order.status === 'pending' && (
+                    <Button 
+                      size="sm"
+                      onClick={() => updateStatusMutation.mutate({ orderId: order.id, status: 'accepted' })}
+                      data-testid={`button-accept-pdv-${order.id}`}
+                    >
+                      <Check className="w-4 h-4 mr-1" />
+                      Aceitar
+                    </Button>
+                  )}
+                  {(order.status === 'accepted' || order.status === 'preparing') && (
+                    <Button 
+                      size="sm"
+                      onClick={() => updateStatusMutation.mutate({ orderId: order.id, status: 'delivered' })}
+                      data-testid={`button-deliver-pdv-${order.id}`}
+                    >
+                      <Check className="w-4 h-4 mr-1" />
+                      Finalizar Venda
+                    </Button>
+                  )}
+                  {order.status !== 'cancelled' && order.status !== 'delivered' && (
+                    <Button 
+                      size="sm" 
+                      variant="outline"
+                      onClick={() => updateStatusMutation.mutate({ orderId: order.id, status: 'cancelled' })}
+                      data-testid={`button-cancel-pdv-${order.id}`}
+                    >
+                      <X className="w-4 h-4 mr-1" />
+                      Cancelar
+                    </Button>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ClientesTab() {
   const { toast } = useToast();
 
@@ -1223,6 +1329,7 @@ export default function AdminDashboard() {
   const renderTab = () => {
     switch (activeTab) {
       case 'pedidos': return <OrdersTab />;
+      case 'pdv': return <PDVTab />;
       case 'delivery': return <DeliveryTab />;
       case 'financeiro': return <FinanceiroTab />;
       case 'clientes': return <ClientesTab />;
