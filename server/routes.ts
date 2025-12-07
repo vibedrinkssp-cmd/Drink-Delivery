@@ -44,7 +44,7 @@ export async function registerRoutes(
       user = users.find(u => 
         u.name.toLowerCase() === username.toLowerCase() && 
         u.password === password &&
-        (u.role === 'admin' || u.role === 'kitchen' || u.role === 'motoboy')
+        (u.role === 'admin' || u.role === 'kitchen' || u.role === 'motoboy' || u.role === 'pdv')
       );
     }
     

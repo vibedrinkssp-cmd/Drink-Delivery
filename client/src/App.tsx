@@ -13,6 +13,7 @@ import Checkout from "@/pages/Checkout";
 import Orders from "@/pages/Orders";
 import Kitchen from "@/pages/Kitchen";
 import Motoboy from "@/pages/Motoboy";
+import PDV from "@/pages/PDV";
 import AdminDashboard from "@/pages/admin/Dashboard";
 
 function Router() {
@@ -25,6 +26,7 @@ function Router() {
       <Route path="/pedidos" component={Orders} />
       <Route path="/cozinha" component={Kitchen} />
       <Route path="/motoboy" component={Motoboy} />
+      <Route path="/pdv" component={PDV} />
       <Route path="/admin" component={AdminDashboard} />
       <Route component={NotFound} />
     </Switch>

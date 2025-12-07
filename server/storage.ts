@@ -115,6 +115,17 @@ export class MemStorage implements IStorage {
       createdAt: new Date(),
     });
 
+    const pdvId = randomUUID();
+    this.users.set(pdvId, {
+      id: pdvId,
+      name: "Balcao",
+      whatsapp: "00000000002",
+      role: "pdv",
+      password: "939393",
+      isBlocked: false,
+      createdAt: new Date(),
+    });
+
     const cat1Id = randomUUID();
     const cat2Id = randomUUID();
     const cat3Id = randomUUID();
@@ -394,6 +405,7 @@ export class MemStorage implements IStorage {
       id, 
       userId: insertOrder.userId,
       addressId: insertOrder.addressId ?? null,
+      orderType: insertOrder.orderType ?? "delivery",
       status: insertOrder.status ?? "pending",
       subtotal: insertOrder.subtotal,
       deliveryFee: insertOrder.deliveryFee,
@@ -403,6 +415,7 @@ export class MemStorage implements IStorage {
       paymentMethod: insertOrder.paymentMethod,
       changeFor: insertOrder.changeFor ?? null,
       notes: insertOrder.notes ?? null,
+      customerName: insertOrder.customerName ?? null,
       motoboyId: insertOrder.motoboyId ?? null,
       createdAt: new Date(),
       acceptedAt: null,

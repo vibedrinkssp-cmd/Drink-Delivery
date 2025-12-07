@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
 import type { User, Address } from '@shared/schema';
 
-type UserRole = 'customer' | 'admin' | 'kitchen' | 'motoboy';
+type UserRole = 'customer' | 'admin' | 'kitchen' | 'motoboy' | 'pdv';
 
 interface AuthContextType {
   user: User | null;

@@ -41,6 +41,8 @@ export default function AdminLogin() {
             window.location.href = '/cozinha';
           } else if (data.role === 'motoboy') {
             window.location.href = '/motoboy';
+          } else if (data.role === 'pdv') {
+            window.location.href = '/pdv';
           }
         }, 100);
       } else {

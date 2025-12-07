@@ -54,6 +54,7 @@ export const orders = pgTable("orders", {
   id: varchar("id", { length: 36 }).primaryKey(),
   userId: varchar("user_id", { length: 36 }).notNull().references(() => users.id),
   addressId: varchar("address_id", { length: 36 }).references(() => addresses.id),
+  orderType: text("order_type").notNull().default("delivery"),
   status: text("status").notNull().default("pending"),
   subtotal: decimal("subtotal", { precision: 10, scale: 2 }).notNull(),
   deliveryFee: decimal("delivery_fee", { precision: 10, scale: 2 }).notNull(),
@@ -63,6 +64,7 @@ export const orders = pgTable("orders", {
   paymentMethod: text("payment_method").notNull(),
   changeFor: decimal("change_for", { precision: 10, scale: 2 }),
   notes: text("notes"),
+  customerName: text("customer_name"),
   motoboyId: varchar("motoboy_id", { length: 36 }).references(() => motoboys.id),
   createdAt: timestamp("created_at").defaultNow(),
   acceptedAt: timestamp("accepted_at"),
@@ -175,10 +177,19 @@ export const ORDER_STATUS_LABELS: Record<OrderStatus, string> = {
   cancelled: "Cancelado",
 };
 
-export type PaymentMethod = "cash" | "pix" | "card_pos";
+export type PaymentMethod = "cash" | "pix" | "card_pos" | "card_credit" | "card_debit";
 
 export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
   cash: "Dinheiro",
   pix: "PIX",
-  card_pos: "Cartão (POS)",
+  card_pos: "Cartao (POS)",
+  card_credit: "Credito",
+  card_debit: "Debito",
+};
+
+export type OrderType = "delivery" | "counter";
+
+export const ORDER_TYPE_LABELS: Record<OrderType, string> = {
+  delivery: "Delivery",
+  counter: "Balcao",
 };
