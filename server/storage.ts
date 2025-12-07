@@ -223,7 +223,10 @@ export class MemStorage implements IStorage {
     const id = randomUUID();
     const user: User = { 
       id, 
-      ...insertUser, 
+      name: insertUser.name,
+      whatsapp: insertUser.whatsapp,
+      role: insertUser.role ?? "customer",
+      password: insertUser.password ?? null,
       isBlocked: insertUser.isBlocked ?? false,
       createdAt: new Date() 
     };
@@ -249,7 +252,19 @@ export class MemStorage implements IStorage {
 
   async createAddress(insertAddress: InsertAddress): Promise<Address> {
     const id = randomUUID();
-    const address: Address = { id, ...insertAddress, isDefault: insertAddress.isDefault ?? true };
+    const address: Address = { 
+      id, 
+      userId: insertAddress.userId,
+      street: insertAddress.street,
+      number: insertAddress.number,
+      complement: insertAddress.complement ?? null,
+      neighborhood: insertAddress.neighborhood,
+      city: insertAddress.city,
+      state: insertAddress.state,
+      zipCode: insertAddress.zipCode,
+      notes: insertAddress.notes ?? null,
+      isDefault: insertAddress.isDefault ?? true 
+    };
     this.addresses.set(id, address);
     return address;
   }
@@ -280,9 +295,10 @@ export class MemStorage implements IStorage {
     const id = randomUUID();
     const category: Category = { 
       id, 
-      ...insertCategory, 
-      isActive: insertCategory.isActive ?? true,
+      name: insertCategory.name,
+      iconUrl: insertCategory.iconUrl ?? null,
       sortOrder: insertCategory.sortOrder ?? 0,
+      isActive: insertCategory.isActive ?? true,
       createdAt: new Date() 
     };
     this.categories.set(id, category);
@@ -318,9 +334,16 @@ export class MemStorage implements IStorage {
     const id = randomUUID();
     const product: Product = { 
       id, 
-      ...insertProduct, 
-      isActive: insertProduct.isActive ?? true,
+      categoryId: insertProduct.categoryId,
+      name: insertProduct.name,
+      description: insertProduct.description ?? null,
+      imageUrl: insertProduct.imageUrl ?? null,
+      costPrice: insertProduct.costPrice,
+      profitMargin: insertProduct.profitMargin,
+      salePrice: insertProduct.salePrice,
       stock: insertProduct.stock ?? 0,
+      isActive: insertProduct.isActive ?? true,
+      productType: insertProduct.productType ?? null,
       createdAt: new Date() 
     };
     this.products.set(id, product);
@@ -369,8 +392,18 @@ export class MemStorage implements IStorage {
     const id = randomUUID();
     const order: Order = { 
       id, 
-      ...insertOrder, 
+      userId: insertOrder.userId,
+      addressId: insertOrder.addressId ?? null,
+      status: insertOrder.status ?? "pending",
+      subtotal: insertOrder.subtotal,
+      deliveryFee: insertOrder.deliveryFee,
+      deliveryDistance: insertOrder.deliveryDistance ?? null,
       discount: insertOrder.discount ?? "0",
+      total: insertOrder.total,
+      paymentMethod: insertOrder.paymentMethod,
+      changeFor: insertOrder.changeFor ?? null,
+      notes: insertOrder.notes ?? null,
+      motoboyId: insertOrder.motoboyId ?? null,
       createdAt: new Date(),
       acceptedAt: null,
       preparingAt: null,
@@ -415,9 +448,12 @@ export class MemStorage implements IStorage {
     const id = randomUUID();
     const banner: Banner = { 
       id, 
-      ...insertBanner, 
-      isActive: insertBanner.isActive ?? true,
+      title: insertBanner.title,
+      description: insertBanner.description ?? null,
+      imageUrl: insertBanner.imageUrl,
+      linkUrl: insertBanner.linkUrl ?? null,
       sortOrder: insertBanner.sortOrder ?? 0,
+      isActive: insertBanner.isActive ?? true,
       createdAt: new Date() 
     };
     this.banners.set(id, banner);
@@ -448,7 +484,9 @@ export class MemStorage implements IStorage {
     const id = randomUUID();
     const motoboy: Motoboy = { 
       id, 
-      ...insertMotoboy, 
+      name: insertMotoboy.name,
+      whatsapp: insertMotoboy.whatsapp,
+      photoUrl: insertMotoboy.photoUrl ?? null,
       isActive: insertMotoboy.isActive ?? true,
       createdAt: new Date() 
     };
