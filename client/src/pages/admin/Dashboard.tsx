@@ -1447,52 +1447,44 @@ export default function AdminDashboard() {
           </div>
         </div>
         
-        <div className="md:hidden px-4 pb-3">
-          <Select value={activeTab} onValueChange={setActiveTab}>
-            <SelectTrigger className="w-full bg-secondary" data-testid="select-mobile-tab">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {tabs.map(tab => (
-                <SelectItem key={tab.id} value={tab.id}>{tab.label}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+      </header>
 
-        <div className="relative items-center hidden md:flex">
+      {/* Horizontal Carousel Tab Menu */}
+      <div className="bg-secondary/50 border-b border-border sticky top-[57px] z-40">
+        <div className="relative flex items-center">
           <Button
             size="icon"
             variant="ghost"
-            className="absolute left-0 z-10"
+            className="absolute left-1 z-10 bg-background/80 backdrop-blur-sm shadow-md hidden md:flex"
             onClick={() => scrollTabs('left')}
             data-testid="button-scroll-left"
           >
-            <ChevronLeft className="w-4 h-4" />
+            <ChevronLeft className="w-5 h-5" />
           </Button>
           
           <div 
             ref={scrollContainerRef}
-            className="flex overflow-x-auto px-10 gap-1 py-2"
+            className="flex overflow-x-auto px-2 md:px-12 gap-2 py-3 w-full"
             style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
           >
             {tabs.map(tab => {
               const Icon = tab.icon;
               const isActive = activeTab === tab.id;
               return (
-                <button
+                <Button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-lg whitespace-nowrap transition-colors flex-shrink-0 ${
+                  variant={isActive ? "default" : "outline"}
+                  className={`flex items-center gap-2 px-4 py-2 whitespace-nowrap flex-shrink-0 min-w-fit ${
                     isActive 
-                      ? 'bg-primary text-primary-foreground' 
-                      : 'text-muted-foreground hover-elevate'
+                      ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/30' 
+                      : 'bg-background border-border/50'
                   }`}
                   data-testid={`tab-${tab.id}`}
                 >
                   <Icon className="w-4 h-4" />
-                  <span className="text-sm font-medium">{tab.label}</span>
-                </button>
+                  <span className="font-medium">{tab.label}</span>
+                </Button>
               );
             })}
           </div>
@@ -1500,14 +1492,14 @@ export default function AdminDashboard() {
           <Button
             size="icon"
             variant="ghost"
-            className="absolute right-0 z-10"
+            className="absolute right-1 z-10 bg-background/80 backdrop-blur-sm shadow-md hidden md:flex"
             onClick={() => scrollTabs('right')}
             data-testid="button-scroll-right"
           >
-            <ChevronRight className="w-4 h-4" />
+            <ChevronRight className="w-5 h-5" />
           </Button>
         </div>
-      </header>
+      </div>
 
       <main className="flex-1 p-4 md:p-6 lg:p-8 overflow-auto">
         {renderTab()}
