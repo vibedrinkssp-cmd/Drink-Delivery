@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useLocation } from 'wouter';
-import { Phone, User, MapPin, ArrowRight, Loader2 } from 'lucide-react';
+import { Phone, User, MapPin, ArrowRight, Loader2, Lock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -11,7 +11,7 @@ import { useAuth } from '@/lib/auth';
 import { apiRequest } from '@/lib/queryClient';
 import logoImage from '@assets/VIBE_DRINKS_1765072715257.png';
 
-type Step = 'phone' | 'register';
+type Step = 'phone' | 'password' | 'register';
 
 export default function Login() {
   const [, setLocation] = useLocation();
@@ -20,8 +20,10 @@ export default function Login() {
   
   const [step, setStep] = useState<Step>('phone');
   const [isLoading, setIsLoading] = useState(false);
+  const [userName, setUserName] = useState('');
   
   const [whatsapp, setWhatsapp] = useState('');
+  const [password, setPassword] = useState('');
   const [name, setName] = useState('');
   const [street, setStreet] = useState('');
   const [number, setNumber] = useState('');
@@ -43,6 +45,11 @@ export default function Login() {
     setWhatsapp(formatPhone(e.target.value));
   };
 
+  const handlePasswordChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value.replace(/\D/g, '').slice(0, 6);
+    setPassword(value);
+  };
+
   const handleCheckPhone = async () => {
     const cleanPhone = whatsapp.replace(/\D/g, '');
     if (cleanPhone.length < 10) {
@@ -56,15 +63,8 @@ export default function Login() {
       const data = await response.json();
       
       if (data.exists) {
-        login(data.user, 'customer');
-        if (data.address) {
-          setAddress(data.address);
-        }
-        toast({ title: 'Bem-vindo de volta!', description: `Ola, ${data.user.name}!` });
-        
-        const params = new URLSearchParams(window.location.search);
-        const redirect = params.get('redirect') || '/';
-        setLocation(redirect);
+        setUserName(data.userName);
+        setStep('password');
       } else {
         setStep('register');
       }
@@ -75,9 +75,53 @@ export default function Login() {
     }
   };
 
+  const handleLogin = async () => {
+    if (password.length !== 6) {
+      toast({ title: 'Senha invalida', description: 'A senha deve ter 6 digitos', variant: 'destructive' });
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const cleanPhone = whatsapp.replace(/\D/g, '');
+      const response = await apiRequest('POST', '/api/auth/customer-login', { 
+        whatsapp: cleanPhone, 
+        password 
+      });
+      const data = await response.json();
+      
+      if (data.success) {
+        login(data.user, 'customer');
+        if (data.address) {
+          setAddress(data.address);
+        }
+        toast({ title: 'Bem-vindo de volta!', description: `Ola, ${data.user.name}!` });
+        
+        const params = new URLSearchParams(window.location.search);
+        const redirect = params.get('redirect') || '/';
+        setLocation(redirect);
+      } else {
+        toast({ title: 'Erro', description: data.error || 'Senha incorreta', variant: 'destructive' });
+      }
+    } catch (error: any) {
+      const errorData = error?.response?.json ? await error.response.json() : null;
+      toast({ 
+        title: 'Erro ao entrar', 
+        description: errorData?.error || 'Verifique sua senha e tente novamente', 
+        variant: 'destructive' 
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleRegister = async () => {
     if (!name.trim()) {
       toast({ title: 'Nome obrigatorio', variant: 'destructive' });
+      return;
+    }
+    if (password.length !== 6) {
+      toast({ title: 'Senha invalida', description: 'A senha deve ter 6 digitos', variant: 'destructive' });
       return;
     }
     if (!street || !number || !neighborhood || !city || !state || !zipCode) {
@@ -89,7 +133,7 @@ export default function Login() {
     try {
       const cleanPhone = whatsapp.replace(/\D/g, '');
       const response = await apiRequest('POST', '/api/auth/register', {
-        user: { name, whatsapp: cleanPhone },
+        user: { name, whatsapp: cleanPhone, password },
         address: { street, number, complement, neighborhood, city, state, zipCode, notes }
       });
       const data = await response.json();
@@ -101,10 +145,31 @@ export default function Login() {
       const params = new URLSearchParams(window.location.search);
       const redirect = params.get('redirect') || '/';
       setLocation(redirect);
-    } catch (error) {
-      toast({ title: 'Erro ao cadastrar', description: 'Tente novamente', variant: 'destructive' });
+    } catch (error: any) {
+      const errorData = error?.response?.json ? await error.response.json() : null;
+      toast({ 
+        title: 'Erro ao cadastrar', 
+        description: errorData?.error || 'Tente novamente', 
+        variant: 'destructive' 
+      });
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const getStepTitle = () => {
+    switch (step) {
+      case 'phone': return 'Entrar';
+      case 'password': return `Ola, ${userName}!`;
+      case 'register': return 'Criar Conta';
+    }
+  };
+
+  const getStepDescription = () => {
+    switch (step) {
+      case 'phone': return 'Digite seu numero de WhatsApp para continuar';
+      case 'password': return 'Digite sua senha de 6 digitos';
+      case 'register': return 'Complete seu cadastro para fazer pedidos';
     }
   };
 
@@ -114,18 +179,15 @@ export default function Login() {
         <CardHeader className="text-center">
           <img src={logoImage} alt="Vibe Drinks" className="h-16 mx-auto mb-4" />
           <CardTitle className="font-serif text-2xl text-primary">
-            {step === 'phone' ? 'Entrar' : 'Criar Conta'}
+            {getStepTitle()}
           </CardTitle>
           <CardDescription className="text-muted-foreground">
-            {step === 'phone' 
-              ? 'Digite seu numero de WhatsApp para continuar'
-              : 'Complete seu cadastro para fazer pedidos'
-            }
+            {getStepDescription()}
           </CardDescription>
         </CardHeader>
         
         <CardContent className="space-y-4">
-          {step === 'phone' ? (
+          {step === 'phone' && (
             <>
               <div className="space-y-2">
                 <Label htmlFor="whatsapp" className="text-foreground">WhatsApp</Label>
@@ -159,7 +221,57 @@ export default function Login() {
                 )}
               </Button>
             </>
-          ) : (
+          )}
+
+          {step === 'password' && (
+            <>
+              <div className="space-y-2">
+                <Label htmlFor="password" className="text-foreground">Senha (6 digitos)</Label>
+                <div className="relative">
+                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+                  <Input
+                    id="password"
+                    type="password"
+                    inputMode="numeric"
+                    placeholder="000000"
+                    value={password}
+                    onChange={handlePasswordChange}
+                    maxLength={6}
+                    className="pl-10 bg-secondary border-primary/30 text-foreground text-center text-xl tracking-widest"
+                    data-testid="input-password"
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  className="flex-1 border-primary/50 text-primary"
+                  onClick={() => {
+                    setStep('phone');
+                    setPassword('');
+                  }}
+                  data-testid="button-back-password"
+                >
+                  Voltar
+                </Button>
+                <Button
+                  className="flex-1 bg-primary text-primary-foreground"
+                  onClick={handleLogin}
+                  disabled={isLoading || password.length !== 6}
+                  data-testid="button-login"
+                >
+                  {isLoading ? (
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                  ) : (
+                    'Entrar'
+                  )}
+                </Button>
+              </div>
+            </>
+          )}
+
+          {step === 'register' && (
             <>
               <div className="space-y-2">
                 <Label htmlFor="name" className="text-foreground">Nome completo</Label>
@@ -174,6 +286,25 @@ export default function Login() {
                     data-testid="input-name"
                   />
                 </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="register-password" className="text-foreground">Crie uma senha (6 digitos)</Label>
+                <div className="relative">
+                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+                  <Input
+                    id="register-password"
+                    type="password"
+                    inputMode="numeric"
+                    placeholder="000000"
+                    value={password}
+                    onChange={handlePasswordChange}
+                    maxLength={6}
+                    className="pl-10 bg-secondary border-primary/30 text-foreground text-center text-xl tracking-widest"
+                    data-testid="input-register-password"
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground">Apenas numeros, 6 digitos</p>
               </div>
 
               <div className="space-y-2">
@@ -253,7 +384,11 @@ export default function Login() {
                 <Button
                   variant="outline"
                   className="flex-1 border-primary/50 text-primary"
-                  onClick={() => setStep('phone')}
+                  onClick={() => {
+                    setStep('phone');
+                    setPassword('');
+                  }}
+                  data-testid="button-back-register"
                 >
                   Voltar
                 </Button>

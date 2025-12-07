@@ -1,6 +1,9 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
+import bcrypt from "bcrypt";
+
+const SALT_ROUNDS = 10;
 
 export async function registerRoutes(
   httpServer: Server,
@@ -51,7 +54,8 @@ export async function registerRoutes(
     if (!user) {
       return res.status(401).json({ success: false, error: "Invalid credentials" });
     }
-    res.json({ success: true, user, role: user.role });
+    const { password: _, ...safeUser } = user;
+    res.json({ success: true, user: safeUser, role: user.role });
   });
 
   app.post("/api/auth/whatsapp", async (req, res) => {
@@ -66,29 +70,71 @@ export async function registerRoutes(
         isBlocked: false
       });
     }
-    res.json(user);
+    const { password: _, ...safeUser } = user;
+    res.json(safeUser);
   });
 
   app.post("/api/auth/check-phone", async (req, res) => {
     const { whatsapp } = req.body;
     const user = await storage.getUserByWhatsapp(whatsapp);
     if (user) {
-      const addresses = await storage.getAddresses(user.id);
-      const defaultAddress = addresses.find(a => a.isDefault) || addresses[0];
-      res.json({ exists: true, user, address: defaultAddress || null });
+      res.json({ exists: true, userName: user.name });
     } else {
       res.json({ exists: false });
     }
   });
 
+  app.post("/api/auth/customer-login", async (req, res) => {
+    const { whatsapp, password } = req.body;
+    
+    if (!password || !/^\d{6}$/.test(password)) {
+      return res.status(400).json({ success: false, error: "Senha deve ter exatamente 6 digitos" });
+    }
+    
+    const user = await storage.getUserByWhatsapp(whatsapp);
+    if (!user) {
+      return res.status(401).json({ success: false, error: "Usuario nao encontrado" });
+    }
+    
+    if (user.isBlocked) {
+      return res.status(403).json({ success: false, error: "Usuario bloqueado" });
+    }
+    
+    if (!user.password) {
+      return res.status(401).json({ success: false, error: "Senha nao cadastrada" });
+    }
+    
+    const isValid = await bcrypt.compare(password, user.password);
+    if (!isValid) {
+      return res.status(401).json({ success: false, error: "Senha incorreta" });
+    }
+    
+    const addresses = await storage.getAddresses(user.id);
+    const defaultAddress = addresses.find(a => a.isDefault) || addresses[0];
+    
+    const { password: _, ...safeUser } = user;
+    res.json({ success: true, user: safeUser, address: defaultAddress || null });
+  });
+
   app.post("/api/auth/register", async (req, res) => {
     const { user: userData, address: addressData } = req.body;
+    
+    if (!userData.password || !/^\d{6}$/.test(userData.password)) {
+      return res.status(400).json({ error: "Senha deve ter exatamente 6 digitos" });
+    }
+    
+    const existingUser = await storage.getUserByWhatsapp(userData.whatsapp);
+    if (existingUser) {
+      return res.status(400).json({ error: "Usuario ja cadastrado com este WhatsApp" });
+    }
+    
+    const hashedPassword = await bcrypt.hash(userData.password, SALT_ROUNDS);
     
     const user = await storage.createUser({
       name: userData.name,
       whatsapp: userData.whatsapp,
       role: "customer",
-      password: null,
+      password: hashedPassword,
       isBlocked: false
     });
     
@@ -105,7 +151,8 @@ export async function registerRoutes(
       isDefault: true
     });
     
-    res.json({ user, address });
+    const { password: _, ...safeUser } = user;
+    res.json({ user: safeUser, address });
   });
 
   app.get("/api/addresses/:userId", async (req, res) => {
