@@ -1,11 +1,13 @@
+import { useState } from 'react';
 import { useLocation } from 'wouter';
 import { useQuery, useMutation } from '@tanstack/react-query';
-import { MapPin, Phone, Banknote, CreditCard, QrCode, Package, LogOut, RefreshCw, Navigation, CheckCircle, Truck } from 'lucide-react';
+import { MapPin, Phone, Banknote, CreditCard, QrCode, Package, LogOut, RefreshCw, Navigation, CheckCircle, Truck, Wifi, WifiOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
+import { useOrderUpdates } from '@/hooks/use-order-updates';
 import { useAuth } from '@/lib/auth';
 import { apiRequest, queryClient } from '@/lib/queryClient';
 import type { Order, OrderItem, Address, Motoboy } from '@shared/schema';
@@ -30,10 +32,25 @@ export default function Motoboy() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const { user, role, logout } = useAuth();
+  const [isSSEConnected, setIsSSEConnected] = useState(false);
+
+  // Real-time order updates via SSE
+  useOrderUpdates({
+    onConnected: () => setIsSSEConnected(true),
+    onDisconnected: () => setIsSSEConnected(false),
+    onOrderStatusChanged: (data) => {
+      if (data.status === 'ready') {
+        toast({ title: 'Nova entrega disponivel!' });
+      }
+    },
+    onOrderAssigned: () => {
+      toast({ title: 'Pedido atribuido!' });
+    },
+  });
 
   const { data: orders = [], isLoading, refetch } = useQuery<OrderWithDetails[]>({
     queryKey: ['/api/orders'],
-    refetchInterval: 10000,
+    refetchInterval: isSSEConnected ? 30000 : 5000,
     enabled: !!user?.id,
   });
 
@@ -123,6 +140,16 @@ export default function Motoboy() {
           <h1 className="font-serif text-2xl text-primary">Entregas</h1>
         </div>
         <div className="flex items-center gap-4">
+          <Badge 
+            className={isSSEConnected 
+              ? "bg-green-500/20 text-green-400 border-green-500/30" 
+              : "bg-red-500/20 text-red-400 border-red-500/30"
+            }
+            data-testid="badge-connection-status"
+          >
+            {isSSEConnected ? <Wifi className="h-3 w-3 mr-1" /> : <WifiOff className="h-3 w-3 mr-1" />}
+            {isSSEConnected ? 'Ao Vivo' : 'Offline'}
+          </Badge>
           <Button
             variant="outline"
             size="sm"

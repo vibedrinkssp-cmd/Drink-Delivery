@@ -1,9 +1,24 @@
-import type { Express } from "express";
+import type { Express, Response } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import bcrypt from "bcrypt";
 
 const SALT_ROUNDS = 10;
+
+// SSE clients for real-time order updates
+const orderClients: Set<Response> = new Set();
+
+// Broadcast order updates to all connected SSE clients
+function broadcastOrderUpdate(event: string, data?: any) {
+  const message = `event: ${event}\ndata: ${JSON.stringify(data || {})}\n\n`;
+  orderClients.forEach(client => {
+    try {
+      client.write(message);
+    } catch (error) {
+      orderClients.delete(client);
+    }
+  });
+}
 
 const VALID_STATUS_TRANSITIONS: Record<string, string[]> = {
   pending: ['accepted', 'cancelled'],
@@ -24,6 +39,38 @@ export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
+
+  // SSE endpoint for real-time order updates
+  app.get("/api/orders/sse", (req, res) => {
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+      'Access-Control-Allow-Origin': '*',
+    });
+
+    // Send initial connection message
+    res.write(`event: connected\ndata: ${JSON.stringify({ message: 'Connected to order updates' })}\n\n`);
+
+    // Add client to the set
+    orderClients.add(res);
+
+    // Send heartbeat every 30 seconds to keep connection alive
+    const heartbeat = setInterval(() => {
+      try {
+        res.write(`event: heartbeat\ndata: ${JSON.stringify({ timestamp: Date.now() })}\n\n`);
+      } catch (error) {
+        clearInterval(heartbeat);
+        orderClients.delete(res);
+      }
+    }, 30000);
+
+    // Remove client on disconnect
+    req.on('close', () => {
+      clearInterval(heartbeat);
+      orderClients.delete(res);
+    });
+  });
 
   app.get("/api/users", async (_req, res) => {
     const users = await storage.getUsers();
@@ -377,6 +424,9 @@ export async function registerRoutes(
       }
     }
     
+    // Broadcast new order to all connected clients
+    broadcastOrderUpdate('order_created', { orderId: order.id, status: order.status });
+    
     res.status(201).json(order);
   });
 
@@ -415,6 +465,10 @@ export async function registerRoutes(
     }
 
     const updated = await storage.updateOrder(req.params.id, updates);
+    
+    // Broadcast status change to all connected clients
+    broadcastOrderUpdate('order_status_changed', { orderId: req.params.id, status, previousStatus: order.status });
+    
     res.json(updated);
   });
 
@@ -434,6 +488,10 @@ export async function registerRoutes(
       status: "dispatched",
       dispatchedAt: new Date()
     });
+    
+    // Broadcast motoboy assignment to all connected clients
+    broadcastOrderUpdate('order_assigned', { orderId: req.params.id, motoboyId, status: 'dispatched' });
+    
     res.json(updated);
   });
 

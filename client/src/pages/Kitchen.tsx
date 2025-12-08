@@ -1,11 +1,12 @@
 import { useLocation } from 'wouter';
 import { useQuery, useMutation } from '@tanstack/react-query';
-import { Clock, ChefHat, Package, LogOut, RefreshCw, Truck, User as UserIcon } from 'lucide-react';
+import { Clock, ChefHat, Package, LogOut, RefreshCw, Truck, User as UserIcon, Wifi, WifiOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
+import { useOrderUpdates } from '@/hooks/use-order-updates';
 import { useAuth } from '@/lib/auth';
 import { apiRequest, queryClient } from '@/lib/queryClient';
 import type { Order, OrderItem } from '@shared/schema';
@@ -31,6 +32,18 @@ export default function Kitchen() {
   const { toast } = useToast();
   const { role, logout } = useAuth();
   const [now, setNow] = useState(Date.now());
+  const [isSSEConnected, setIsSSEConnected] = useState(false);
+
+  // Real-time order updates via SSE
+  useOrderUpdates({
+    onConnected: () => setIsSSEConnected(true),
+    onDisconnected: () => setIsSSEConnected(false),
+    onOrderStatusChanged: (data) => {
+      if (data.status === 'accepted') {
+        toast({ title: 'Novo pedido na fila!' });
+      }
+    },
+  });
 
   useEffect(() => {
     const interval = setInterval(() => setNow(Date.now()), 30000);
@@ -39,7 +52,7 @@ export default function Kitchen() {
 
   const { data: orders = [], isLoading, refetch } = useQuery<OrderWithItems[]>({
     queryKey: ['/api/orders', 'kitchen'],
-    refetchInterval: 10000,
+    refetchInterval: isSSEConnected ? 30000 : 5000, // Slower polling when SSE connected
   });
 
   const updateStatusMutation = useMutation({
@@ -83,6 +96,16 @@ export default function Kitchen() {
           <h1 className="font-serif text-2xl text-primary">Cozinha - KDE</h1>
         </div>
         <div className="flex items-center gap-4">
+          <Badge 
+            className={isSSEConnected 
+              ? "bg-green-500/20 text-green-400 border-green-500/30" 
+              : "bg-red-500/20 text-red-400 border-red-500/30"
+            }
+            data-testid="badge-connection-status"
+          >
+            {isSSEConnected ? <Wifi className="h-3 w-3 mr-1" /> : <WifiOff className="h-3 w-3 mr-1" />}
+            {isSSEConnected ? 'Ao Vivo' : 'Offline'}
+          </Badge>
           <Button
             variant="outline"
             size="sm"
