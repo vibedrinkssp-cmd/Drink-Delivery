@@ -192,7 +192,8 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getProducts(): Promise<Product[]> {
-    return await db.select().from(products).where(eq(products.isActive, true));
+    const result = await db.select().from(products).where(eq(products.isActive, true));
+    return result.sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
   }
 
   async getProduct(id: string): Promise<Product | undefined> {
@@ -201,8 +202,9 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getProductsByCategory(categoryId: string): Promise<Product[]> {
-    return await db.select().from(products)
+    const result = await db.select().from(products)
       .where(eq(products.categoryId, categoryId));
+    return result.sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
   }
 
   async createProduct(insertProduct: InsertProduct): Promise<Product> {
@@ -219,6 +221,7 @@ export class DatabaseStorage implements IStorage {
       stock: insertProduct.stock ?? 0,
       isActive: insertProduct.isActive ?? true,
       productType: insertProduct.productType ?? null,
+      sortOrder: insertProduct.sortOrder ?? 0,
     }).returning();
     return product;
   }

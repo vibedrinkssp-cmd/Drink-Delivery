@@ -47,6 +47,7 @@ export const products = pgTable("products", {
   stock: integer("stock").notNull().default(0),
   isActive: boolean("is_active").default(true),
   productType: text("product_type"),
+  sortOrder: integer("sort_order").default(0),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

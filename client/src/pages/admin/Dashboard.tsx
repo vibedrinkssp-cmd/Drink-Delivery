@@ -38,8 +38,12 @@ import {
   Power,
   Wifi,
   WifiOff,
-  Search
+  Search,
+  GripVertical
 } from 'lucide-react';
+import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
+import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { useRef} from 'react';
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
@@ -1369,6 +1373,78 @@ function ProdutosTab() {
   );
 }
 
+function SortableCategoryItem({ 
+  category, 
+  onEdit, 
+  onDelete 
+}: { 
+  category: Category; 
+  onEdit: (cat: Category) => void; 
+  onDelete: (id: string) => void;
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: category.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+
+  const IconComponent = getCategoryIcon(category.iconUrl);
+
+  return (
+    <Card 
+      ref={setNodeRef} 
+      style={style}
+      className={isDragging ? 'z-50' : ''}
+      data-testid={`card-category-${category.id}`}
+    >
+      <CardContent className="p-4 flex items-center gap-4">
+        <div
+          {...attributes}
+          {...listeners}
+          className="cursor-grab active:cursor-grabbing p-1 rounded hover:bg-muted"
+          data-testid={`drag-handle-category-${category.id}`}
+        >
+          <GripVertical className="w-5 h-5 text-muted-foreground" />
+        </div>
+        <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
+          <IconComponent className="w-6 h-6 text-primary" />
+        </div>
+        <div className="flex-1">
+          <h3 className="font-semibold">{category.name}</h3>
+          <p className="text-sm text-muted-foreground">Ordem: {category.sortOrder}</p>
+        </div>
+        <div className="flex gap-2">
+          <Button 
+            size="icon" 
+            variant="ghost"
+            onClick={() => onEdit(category)}
+            data-testid={`button-edit-category-${category.id}`}
+          >
+            <Edit2 className="w-4 h-4" />
+          </Button>
+          <Button 
+            size="icon" 
+            variant="ghost"
+            onClick={() => onDelete(category.id)}
+            data-testid={`button-delete-category-${category.id}`}
+          >
+            <Trash2 className="w-4 h-4" />
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 function CategoriasTab() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
@@ -1377,6 +1453,13 @@ function CategoriasTab() {
   const { data: categories = [] } = useQuery<Category[]>({
     queryKey: ['/api/categories'],
   });
+
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
 
   const createMutation = useMutation({
     mutationFn: async (data: Partial<Category>) => {
@@ -1411,6 +1494,33 @@ function CategoriasTab() {
     },
   });
 
+  const reorderMutation = useMutation({
+    mutationFn: async (items: { id: string; sortOrder: number }[]) => {
+      return apiRequest('PATCH', '/api/categories/reorder', { items });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/categories'] });
+      toast({ title: 'Ordem atualizada!' });
+    },
+  });
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    
+    if (over && active.id !== over.id) {
+      const oldIndex = categories.findIndex((c) => c.id === active.id);
+      const newIndex = categories.findIndex((c) => c.id === over.id);
+      
+      const reordered = arrayMove(categories, oldIndex, newIndex);
+      const items = reordered.map((cat, index) => ({
+        id: cat.id,
+        sortOrder: index + 1,
+      }));
+      
+      reorderMutation.mutate(items);
+    }
+  };
+
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
@@ -1431,7 +1541,10 @@ function CategoriasTab() {
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
-        <h2 className="font-serif text-3xl text-primary">Categorias</h2>
+        <div>
+          <h2 className="font-serif text-3xl text-primary">Categorias</h2>
+          <p className="text-sm text-muted-foreground mt-1">Arraste para reordenar</p>
+        </div>
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
           <DialogTrigger asChild>
             <Button onClick={() => setEditingCategory(null)} data-testid="button-add-category">
@@ -1464,44 +1577,27 @@ function CategoriasTab() {
         </Dialog>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {categories.map(category => (
-          <Card key={category.id} data-testid={`card-category-${category.id}`}>
-            <CardContent className="p-4 flex items-center gap-4">
-              {(() => {
-                const IconComponent = getCategoryIcon(category.iconUrl);
-                return (
-                  <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
-                    <IconComponent className="w-6 h-6 text-primary" />
-                  </div>
-                );
-              })()}
-              <div className="flex-1">
-                <h3 className="font-semibold">{category.name}</h3>
-                <p className="text-sm text-muted-foreground">Ordem: {category.sortOrder}</p>
-              </div>
-              <div className="flex gap-2">
-                <Button 
-                  size="icon" 
-                  variant="ghost"
-                  onClick={() => { setEditingCategory(category); setIsDialogOpen(true); }}
-                  data-testid={`button-edit-category-${category.id}`}
-                >
-                  <Edit2 className="w-4 h-4" />
-                </Button>
-                <Button 
-                  size="icon" 
-                  variant="ghost"
-                  onClick={() => deleteMutation.mutate(category.id)}
-                  data-testid={`button-delete-category-${category.id}`}
-                >
-                  <Trash2 className="w-4 h-4" />
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+      <DndContext 
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        onDragEnd={handleDragEnd}
+      >
+        <SortableContext 
+          items={categories.map(c => c.id)}
+          strategy={verticalListSortingStrategy}
+        >
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {categories.map(category => (
+              <SortableCategoryItem
+                key={category.id}
+                category={category}
+                onEdit={(cat) => { setEditingCategory(cat); setIsDialogOpen(true); }}
+                onDelete={(id) => deleteMutation.mutate(id)}
+              />
+            ))}
+          </div>
+        </SortableContext>
+      </DndContext>
     </div>
   );
 }

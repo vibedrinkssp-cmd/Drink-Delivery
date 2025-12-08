@@ -738,6 +738,48 @@ export async function registerRoutes(
     res.status(204).send();
   });
 
+  // Batch update sort orders for categories
+  app.patch("/api/categories/reorder", async (req, res) => {
+    const { items } = req.body;
+    if (!Array.isArray(items)) {
+      return res.status(400).json({ error: "items array required" });
+    }
+    
+    try {
+      for (const item of items) {
+        if (item.id && typeof item.sortOrder === 'number') {
+          await storage.updateCategory(item.id, { sortOrder: item.sortOrder });
+        }
+      }
+      const categories = await storage.getCategories();
+      res.json(categories);
+    } catch (error) {
+      console.error("Error reordering categories:", error);
+      res.status(500).json({ error: "Failed to reorder categories" });
+    }
+  });
+
+  // Batch update sort orders for products
+  app.patch("/api/products/reorder", async (req, res) => {
+    const { items } = req.body;
+    if (!Array.isArray(items)) {
+      return res.status(400).json({ error: "items array required" });
+    }
+    
+    try {
+      for (const item of items) {
+        if (item.id && typeof item.sortOrder === 'number') {
+          await storage.updateProduct(item.id, { sortOrder: item.sortOrder });
+        }
+      }
+      const products = await storage.getProducts();
+      res.json(products);
+    } catch (error) {
+      console.error("Error reordering products:", error);
+      res.status(500).json({ error: "Failed to reorder products" });
+    }
+  });
+
   app.get("/api/settings", async (_req, res) => {
     const settings = await storage.getSettings();
     res.json(settings || {});
