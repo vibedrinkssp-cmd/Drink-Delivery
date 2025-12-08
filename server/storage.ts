@@ -228,8 +228,9 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateProduct(id: string, updates: Partial<InsertProduct>): Promise<Product | undefined> {
+    const allowedFields = ['categoryId', 'name', 'description', 'imageUrl', 'costPrice', 'profitMargin', 'salePrice', 'stock', 'isActive', 'productType', 'sortOrder'];
     const filteredUpdates = Object.fromEntries(
-      Object.entries(updates).filter(([_, value]) => value !== undefined)
+      Object.entries(updates).filter(([key, value]) => value !== undefined && allowedFields.includes(key))
     );
     if (Object.keys(filteredUpdates).length === 0) {
       return this.getProduct(id);
