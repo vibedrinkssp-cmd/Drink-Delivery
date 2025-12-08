@@ -1992,7 +1992,7 @@ function MotoboysTab() {
     return (
       order.id.toLowerCase().includes(searchLower) ||
       (order.customerName && order.customerName.toLowerCase().includes(searchLower)) ||
-      (order.deliveryAddress && order.deliveryAddress.toLowerCase().includes(searchLower))
+      (order.notes && order.notes.toLowerCase().includes(searchLower))
     );
   });
 
@@ -2015,12 +2015,11 @@ function MotoboysTab() {
       ['Taxas de Entrega', formatCurrency(reportTotals.deliveryFees)],
       [''],
       ['Pedidos'],
-      ['ID', 'Data', 'Cliente', 'Endereco', 'Valor', 'Taxa Entrega', 'Status'],
+      ['ID', 'Data', 'Cliente', 'Valor', 'Taxa Entrega', 'Status'],
       ...filteredReportOrders.map(order => [
         order.id,
         formatDate(order.createdAt),
         order.customerName || '-',
-        order.deliveryAddress || '-',
         formatCurrency(order.total),
         formatCurrency(order.deliveryFee),
         ORDER_STATUS_LABELS[order.status as OrderStatus]
@@ -2305,7 +2304,7 @@ function MotoboysTab() {
                               </Badge>
                             </div>
                             <p className="text-sm truncate">{order.customerName || '-'}</p>
-                            <p className="text-xs text-muted-foreground truncate">{order.deliveryAddress || '-'}</p>
+                            <p className="text-xs text-muted-foreground truncate">{order.notes || '-'}</p>
                           </div>
                           <div className="text-right">
                             <p className="font-semibold">{formatCurrency(order.total)}</p>
