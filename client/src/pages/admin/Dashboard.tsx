@@ -8,7 +8,6 @@ import {
   Users, 
   ShoppingBag, 
   Grid3X3, 
-  Image, 
   Bike, 
   Settings,
   LogOut,
@@ -55,7 +54,7 @@ import { useAuth } from '@/lib/auth';
 import { useToast } from '@/hooks/use-toast';
 import { useOrderUpdates } from '@/hooks/use-order-updates';
 import { apiRequest, queryClient } from '@/lib/queryClient';
-import type { Order, Product, Category, Banner, Motoboy, User, Settings as SettingsType } from '@shared/schema';
+import type { Order, Product, Category, Motoboy, User, Settings as SettingsType } from '@shared/schema';
 import { ORDER_STATUS_LABELS, PAYMENT_METHOD_LABELS, ORDER_TYPE_LABELS, type OrderStatus, type PaymentMethod, type OrderType } from '@shared/schema';
 
 const tabs = [
@@ -66,7 +65,6 @@ const tabs = [
   { id: 'clientes', label: 'Clientes', icon: Users },
   { id: 'produtos', label: 'Produtos', icon: ShoppingBag },
   { id: 'categorias', label: 'Categorias', icon: Grid3X3 },
-  { id: 'banners', label: 'Banners', icon: Image },
   { id: 'motoboys', label: 'Motoboys', icon: Bike },
   { id: 'configuracoes', label: 'Configuracoes', icon: Settings },
 ];
@@ -1000,146 +998,6 @@ function CategoriasTab() {
   );
 }
 
-function BannersTab() {
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [editingBanner, setEditingBanner] = useState<Banner | null>(null);
-  const { toast } = useToast();
-
-  const { data: banners = [] } = useQuery<Banner[]>({
-    queryKey: ['/api/banners'],
-  });
-
-  const createMutation = useMutation({
-    mutationFn: async (data: Partial<Banner>) => {
-      return apiRequest('POST', '/api/banners', data);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/banners'] });
-      toast({ title: 'Banner criado!' });
-      setIsDialogOpen(false);
-    },
-  });
-
-  const updateMutation = useMutation({
-    mutationFn: async ({ id, data }: { id: string; data: Partial<Banner> }) => {
-      return apiRequest('PATCH', `/api/banners/${id}`, data);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/banners'] });
-      toast({ title: 'Banner atualizado!' });
-      setIsDialogOpen(false);
-      setEditingBanner(null);
-    },
-  });
-
-  const deleteMutation = useMutation({
-    mutationFn: async (id: string) => {
-      return apiRequest('DELETE', `/api/banners/${id}`);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/banners'] });
-      toast({ title: 'Banner excluido!' });
-    },
-  });
-
-  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    const formData = new FormData(e.currentTarget);
-    const data = {
-      title: formData.get('title') as string,
-      description: formData.get('description') as string || null,
-      imageUrl: formData.get('imageUrl') as string,
-      linkUrl: formData.get('linkUrl') as string || null,
-      sortOrder: parseInt(formData.get('sortOrder') as string) || 0,
-      isActive: true,
-    };
-
-    if (editingBanner) {
-      updateMutation.mutate({ id: editingBanner.id, data });
-    } else {
-      createMutation.mutate(data);
-    }
-  };
-
-  return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <h2 className="font-serif text-3xl text-primary">Banners</h2>
-        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-          <DialogTrigger asChild>
-            <Button onClick={() => setEditingBanner(null)} data-testid="button-add-banner">
-              <Plus className="w-4 h-4 mr-2" />
-              Novo Banner
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>{editingBanner ? 'Editar Banner' : 'Novo Banner'}</DialogTitle>
-            </DialogHeader>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <Label htmlFor="title">Titulo</Label>
-                <Input id="title" name="title" defaultValue={editingBanner?.title} required data-testid="input-banner-title" />
-              </div>
-              <div>
-                <Label htmlFor="description">Descricao</Label>
-                <Textarea id="description" name="description" defaultValue={editingBanner?.description || ''} data-testid="input-banner-description" />
-              </div>
-              <div>
-                <Label htmlFor="imageUrl">URL da Imagem</Label>
-                <Input id="imageUrl" name="imageUrl" defaultValue={editingBanner?.imageUrl} required data-testid="input-banner-image" />
-              </div>
-              <div>
-                <Label htmlFor="linkUrl">URL do Link (opcional)</Label>
-                <Input id="linkUrl" name="linkUrl" defaultValue={editingBanner?.linkUrl || ''} data-testid="input-banner-link" />
-              </div>
-              <div>
-                <Label htmlFor="sortOrder">Ordem</Label>
-                <Input id="sortOrder" name="sortOrder" type="number" defaultValue={editingBanner?.sortOrder || 0} data-testid="input-banner-order" />
-              </div>
-              <Button type="submit" className="w-full" data-testid="button-submit-banner">
-                {editingBanner ? 'Salvar' : 'Criar'}
-              </Button>
-            </form>
-          </DialogContent>
-        </Dialog>
-      </div>
-
-      <div className="grid gap-4">
-        {banners.map(banner => (
-          <Card key={banner.id} data-testid={`card-banner-${banner.id}`}>
-            <CardContent className="p-4 flex flex-wrap items-center gap-4">
-              <img src={banner.imageUrl} alt={banner.title} className="w-32 h-16 object-cover rounded-lg" />
-              <div className="flex-1 min-w-0">
-                <h3 className="font-semibold">{banner.title}</h3>
-                <p className="text-sm text-muted-foreground truncate">{banner.description}</p>
-              </div>
-              <div className="flex gap-2">
-                <Button 
-                  size="icon" 
-                  variant="ghost"
-                  onClick={() => { setEditingBanner(banner); setIsDialogOpen(true); }}
-                  data-testid={`button-edit-banner-${banner.id}`}
-                >
-                  <Edit2 className="w-4 h-4" />
-                </Button>
-                <Button 
-                  size="icon" 
-                  variant="ghost"
-                  onClick={() => deleteMutation.mutate(banner.id)}
-                  data-testid={`button-delete-banner-${banner.id}`}
-                >
-                  <Trash2 className="w-4 h-4" />
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 interface MotoboyDetails extends Motoboy {
   hasPassword?: boolean;
   userId?: string | null;
@@ -1662,7 +1520,6 @@ export default function AdminDashboard() {
       case 'clientes': return <ClientesTab />;
       case 'produtos': return <ProdutosTab />;
       case 'categorias': return <CategoriasTab />;
-      case 'banners': return <BannersTab />;
       case 'motoboys': return <MotoboysTab />;
       case 'configuracoes': return <ConfiguracoesTab />;
       default: return <OrdersTab />;
