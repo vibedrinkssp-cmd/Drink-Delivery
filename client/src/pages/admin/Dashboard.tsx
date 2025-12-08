@@ -214,27 +214,7 @@ function OrdersTab() {
                       Aceitar
                     </Button>
                   )}
-                  {order.status === 'accepted' && (
-                    <Button 
-                      size="sm"
-                      onClick={() => updateStatusMutation.mutate({ orderId: order.id, status: 'preparing' })}
-                      data-testid={`button-prepare-${order.id}`}
-                    >
-                      <ChefHat className="w-4 h-4 mr-1" />
-                      Iniciar Producao
-                    </Button>
-                  )}
-                  {order.status === 'preparing' && (
-                    <Button 
-                      size="sm"
-                      onClick={() => updateStatusMutation.mutate({ orderId: order.id, status: 'ready' })}
-                      data-testid={`button-ready-${order.id}`}
-                    >
-                      <Check className="w-4 h-4 mr-1" />
-                      Marcar Pronto
-                    </Button>
-                  )}
-                  {order.status !== 'cancelled' && order.status !== 'delivered' && (
+                  {order.status === 'pending' && (
                     <Button 
                       size="sm" 
                       variant="outline"

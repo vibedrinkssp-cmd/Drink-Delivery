@@ -1,16 +1,15 @@
 import { useLocation } from 'wouter';
 import { useQuery, useMutation } from '@tanstack/react-query';
-import { Clock, ChefHat, Package, LogOut, RefreshCw, Truck, User as UserIcon, Wifi, WifiOff, Send } from 'lucide-react';
+import { Clock, ChefHat, Package, LogOut, RefreshCw, Truck, User as UserIcon, Wifi, WifiOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { useOrderUpdates } from '@/hooks/use-order-updates';
 import { useAuth } from '@/lib/auth';
 import { apiRequest, queryClient } from '@/lib/queryClient';
-import type { Order, OrderItem, Motoboy } from '@shared/schema';
+import type { Order, OrderItem } from '@shared/schema';
 import { ORDER_STATUS_LABELS, PAYMENT_METHOD_LABELS, ORDER_TYPE_LABELS, type OrderStatus, type PaymentMethod, type OrderType } from '@shared/schema';
 import { useEffect, useState } from 'react';
 
@@ -52,29 +51,8 @@ export default function Kitchen() {
   }, []);
 
   const { data: orders = [], isLoading, refetch } = useQuery<OrderWithItems[]>({
-    queryKey: ['/api/orders', 'kitchen'],
+    queryKey: ['/api/orders'],
     refetchInterval: isSSEConnected ? 30000 : 5000, // Slower polling when SSE connected
-  });
-
-  const { data: motoboys = [] } = useQuery<Motoboy[]>({
-    queryKey: ['/api/motoboys'],
-  });
-
-  const [selectedMotoboy, setSelectedMotoboy] = useState<Record<string, string>>({});
-
-  const activeMotoboys = motoboys.filter(m => m.isActive);
-
-  const assignMutation = useMutation({
-    mutationFn: async ({ orderId, motoboyId }: { orderId: string; motoboyId: string }) => {
-      return apiRequest('PATCH', `/api/orders/${orderId}/assign`, { motoboyId });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/orders'] });
-      toast({ title: 'Pedido despachado!' });
-    },
-    onError: () => {
-      toast({ title: 'Erro ao despachar pedido', variant: 'destructive' });
-    },
   });
 
   const updateStatusMutation = useMutation({
@@ -110,15 +88,6 @@ export default function Kitchen() {
   const acceptedOrders = orders.filter(o => o.status === 'accepted');
   const preparingOrders = orders.filter(o => o.status === 'preparing');
   const readyOrders = orders.filter(o => o.status === 'ready');
-
-  const handleDispatch = (orderId: string) => {
-    const motoboyId = selectedMotoboy[orderId];
-    if (!motoboyId) {
-      toast({ title: 'Selecione um motoboy', variant: 'destructive' });
-      return;
-    }
-    assignMutation.mutate({ orderId, motoboyId });
-  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -376,41 +345,10 @@ export default function Kitchen() {
                           )}
 
                           {isDelivery ? (
-                            <div className="space-y-3">
-                              <Select
-                                value={selectedMotoboy[order.id] || ''}
-                                onValueChange={(value) => setSelectedMotoboy(prev => ({ ...prev, [order.id]: value }))}
-                              >
-                                <SelectTrigger 
-                                  className="w-full border-primary/30"
-                                  data-testid={`select-motoboy-${order.id}`}
-                                >
-                                  <SelectValue placeholder="Selecione o motoboy" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {activeMotoboys.length === 0 ? (
-                                    <SelectItem value="no-motoboy" disabled>
-                                      Nenhum motoboy ativo
-                                    </SelectItem>
-                                  ) : (
-                                    activeMotoboys.map((motoboy) => (
-                                      <SelectItem key={motoboy.id} value={motoboy.id}>
-                                        {motoboy.name}
-                                      </SelectItem>
-                                    ))
-                                  )}
-                                </SelectContent>
-                              </Select>
-
-                              <Button
-                                className="w-full bg-purple-600 text-white py-6 text-lg font-semibold"
-                                onClick={() => handleDispatch(order.id)}
-                                disabled={assignMutation.isPending || !selectedMotoboy[order.id]}
-                                data-testid={`button-dispatch-${order.id}`}
-                              >
-                                <Send className="h-5 w-5 mr-2" />
-                                Despachar
-                              </Button>
+                            <div className="bg-purple-500/10 border border-purple-500/30 rounded-lg p-4 text-center">
+                              <Truck className="h-8 w-8 text-purple-400 mx-auto mb-2" />
+                              <p className="text-purple-300 text-sm font-medium">Aguardando atribuicao de motoboy</p>
+                              <p className="text-muted-foreground text-xs mt-1">O administrador ira despachar este pedido</p>
                             </div>
                           ) : (
                             <Button
