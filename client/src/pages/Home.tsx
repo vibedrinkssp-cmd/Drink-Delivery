@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Header } from '@/components/layout/Header';
 import { HeroSection } from '@/components/home/HeroSection';
@@ -7,6 +7,13 @@ import { CategoryCarousel } from '@/components/home/CategoryCarousel';
 import { ProductGrid } from '@/components/home/ProductGrid';
 import { CartSheet } from '@/components/cart/CartSheet';
 import type { Product, Category, Banner } from '@shared/schema';
+
+export const TRENDING_CATEGORY_ID = '__trending__';
+
+type TrendingProductResponse = {
+  product: Product;
+  salesCount: number;
+};
 
 export default function Home() {
   const [cartOpen, setCartOpen] = useState(false);
@@ -24,6 +31,21 @@ export default function Home() {
     queryKey: ['/api/banners'],
   });
 
+  const { data: trendingData = [] } = useQuery<TrendingProductResponse[]>({
+    queryKey: ['/api/products/trending'],
+  });
+
+  const trendingProducts = trendingData.map(t => t.product);
+  const hasTrendingProducts = trendingProducts.length > 0;
+
+  const displayProducts = selectedCategory === TRENDING_CATEGORY_ID 
+    ? trendingProducts 
+    : products;
+
+  const effectiveCategory = selectedCategory === TRENDING_CATEGORY_ID 
+    ? null 
+    : selectedCategory;
+
   return (
     <div className="min-h-screen bg-background">
       <Header onCartOpen={() => setCartOpen(true)} />
@@ -37,12 +59,13 @@ export default function Home() {
           categories={categories}
           selectedCategory={selectedCategory}
           onSelectCategory={setSelectedCategory}
+          showTrending={hasTrendingProducts}
         />
         
         <ProductGrid 
-          products={products}
+          products={displayProducts}
           isLoading={productsLoading}
-          selectedCategory={selectedCategory}
+          selectedCategory={effectiveCategory}
         />
       </main>
 

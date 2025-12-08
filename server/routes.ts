@@ -403,6 +403,12 @@ export async function registerRoutes(
     res.json(products);
   });
 
+  app.get("/api/products/trending", async (req, res) => {
+    const limit = parseInt(req.query.limit as string) || 10;
+    const trendingProducts = await storage.getTrendingProducts(limit);
+    res.json(trendingProducts);
+  });
+
   app.post("/api/products", async (req, res) => {
     const product = await storage.createProduct(req.body);
     res.status(201).json(product);

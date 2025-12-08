@@ -42,6 +42,7 @@ export interface IStorage {
   getProducts(): Promise<Product[]>;
   getProduct(id: string): Promise<Product | undefined>;
   getProductsByCategory(categoryId: string): Promise<Product[]>;
+  getTrendingProducts(limit?: number): Promise<{ product: Product; salesCount: number }[]>;
   createProduct(product: InsertProduct): Promise<Product>;
   updateProduct(id: string, product: Partial<InsertProduct>): Promise<Product | undefined>;
   deleteProduct(id: string): Promise<boolean>;
@@ -240,6 +241,46 @@ export class DatabaseStorage implements IStorage {
   async deleteProduct(id: string): Promise<boolean> {
     await db.update(products).set({ isActive: false }).where(eq(products.id, id));
     return true;
+  }
+
+  async getTrendingProducts(limit: number = 10): Promise<{ product: Product; salesCount: number }[]> {
+    const deliveredOrders = await db.select().from(orders).where(eq(orders.status, 'delivered'));
+    const deliveredOrderIds = new Set(deliveredOrders.map(o => o.id));
+    
+    if (deliveredOrderIds.size === 0) {
+      return [];
+    }
+    
+    const allOrderItems = await db.select().from(orderItems)
+      .where(inArray(orderItems.orderId, Array.from(deliveredOrderIds)));
+    
+    const salesMap = new Map<string, number>();
+    for (const item of allOrderItems) {
+      const currentCount = salesMap.get(item.productId) || 0;
+      salesMap.set(item.productId, currentCount + item.quantity);
+    }
+    
+    const sortedProductIds = Array.from(salesMap.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, limit)
+      .map(([productId]) => productId);
+    
+    if (sortedProductIds.length === 0) {
+      return [];
+    }
+    
+    const trendingProducts = await db.select().from(products)
+      .where(inArray(products.id, sortedProductIds));
+    
+    const result = trendingProducts
+      .filter(p => p.isActive)
+      .map(product => ({
+        product,
+        salesCount: salesMap.get(product.id) || 0
+      }))
+      .sort((a, b) => b.salesCount - a.salesCount);
+    
+    return result;
   }
 
   async getOrders(): Promise<Order[]> {
