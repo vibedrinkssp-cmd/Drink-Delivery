@@ -1122,6 +1122,122 @@ function ClientesTab() {
   );
 }
 
+function SortableProductItem({ 
+  product, 
+  category,
+  onEdit, 
+  onDelete,
+  formatCurrency 
+}: { 
+  product: Product; 
+  category: Category | undefined;
+  onEdit: (prod: Product) => void; 
+  onDelete: (id: string) => void;
+  formatCurrency: (value: number | string) => string;
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: product.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+
+  return (
+    <Card 
+      ref={setNodeRef} 
+      style={style}
+      className={isDragging ? 'z-50' : ''}
+      data-testid={`card-product-${product.id}`}
+    >
+      <CardContent className="p-4">
+        <div className="flex items-start gap-3">
+          <div
+            {...attributes}
+            {...listeners}
+            className="cursor-grab active:cursor-grabbing p-1 rounded hover:bg-muted mt-1 flex-shrink-0"
+            data-testid={`drag-handle-product-${product.id}`}
+          >
+            <GripVertical className="w-5 h-5 text-muted-foreground" />
+          </div>
+          {product.imageUrl ? (
+            <img src={product.imageUrl} alt={product.name} className="w-16 h-16 object-contain rounded-lg bg-white/10 flex-shrink-0" />
+          ) : (
+            <div className="w-16 h-16 rounded-lg bg-secondary flex items-center justify-center flex-shrink-0">
+              <ShoppingBag className="w-6 h-6 text-muted-foreground" />
+            </div>
+          )}
+          <div className="flex-1 min-w-0">
+            <h3 className="font-semibold truncate">{product.name}</h3>
+            {category && (
+              <p className="text-xs text-muted-foreground">{category.name}</p>
+            )}
+            <div className="flex flex-wrap items-center gap-2 mt-1">
+              <Badge className={product.isActive ? 'bg-green-500/20 text-green-300' : 'bg-red-500/20 text-red-300'}>
+                {product.isActive ? 'Ativo' : 'Inativo'}
+              </Badge>
+              {product.productType && (
+                <Badge className="bg-primary/20 text-primary">
+                  {product.productType}
+                </Badge>
+              )}
+            </div>
+          </div>
+        </div>
+        
+        <div className="grid grid-cols-2 gap-2 mt-4 text-sm">
+          <div className="bg-secondary/50 rounded-md p-2">
+            <span className="text-muted-foreground text-xs block">Custo</span>
+            <span className="font-medium">{formatCurrency(product.costPrice)}</span>
+          </div>
+          <div className="bg-secondary/50 rounded-md p-2">
+            <span className="text-muted-foreground text-xs block">Venda</span>
+            <span className="font-bold text-primary">{formatCurrency(product.salePrice)}</span>
+          </div>
+          <div className="bg-secondary/50 rounded-md p-2">
+            <span className="text-muted-foreground text-xs block">Margem</span>
+            <span className="font-medium">{product.profitMargin}%</span>
+          </div>
+          <div className="bg-secondary/50 rounded-md p-2">
+            <span className="text-muted-foreground text-xs block">Estoque</span>
+            <span className={`font-medium ${product.stock <= 5 ? 'text-destructive' : product.stock <= 15 ? 'text-primary' : 'text-foreground'}`}>
+              {product.stock} un
+            </span>
+          </div>
+        </div>
+
+        <div className="flex gap-2 mt-4">
+          <Button 
+            size="sm" 
+            variant="outline" 
+            className="flex-1"
+            onClick={() => onEdit(product)}
+            data-testid={`button-edit-product-${product.id}`}
+          >
+            <Edit2 className="w-4 h-4 mr-1" />
+            Editar
+          </Button>
+          <Button 
+            size="icon" 
+            variant="ghost"
+            onClick={() => onDelete(product.id)}
+            data-testid={`button-delete-product-${product.id}`}
+          >
+            <Trash2 className="w-4 h-4" />
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 function ProdutosTab() {
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -1149,6 +1265,13 @@ function ProdutosTab() {
   const { data: categories = [] } = useQuery<Category[]>({
     queryKey: ['/api/categories'],
   });
+
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
 
   const createMutation = useMutation({
     mutationFn: async (data: Partial<Product>) => {
@@ -1183,6 +1306,33 @@ function ProdutosTab() {
     },
   });
 
+  const reorderMutation = useMutation({
+    mutationFn: async (items: { id: string; sortOrder: number }[]) => {
+      return apiRequest('PATCH', '/api/products/reorder', { items });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/products'] });
+      toast({ title: 'Ordem atualizada!' });
+    },
+  });
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    
+    if (over && active.id !== over.id) {
+      const oldIndex = products.findIndex((p) => p.id === active.id);
+      const newIndex = products.findIndex((p) => p.id === over.id);
+      
+      const reordered = arrayMove(products, oldIndex, newIndex);
+      const items = reordered.map((prod, index) => ({
+        id: prod.id,
+        sortOrder: index + 1,
+      }));
+      
+      reorderMutation.mutate(items);
+    }
+  };
+
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
@@ -1210,7 +1360,10 @@ function ProdutosTab() {
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
-        <h2 className="font-serif text-3xl text-primary">Produtos</h2>
+        <div>
+          <h2 className="font-serif text-3xl text-primary">Produtos</h2>
+          <p className="text-sm text-muted-foreground mt-1">Arraste para reordenar</p>
+        </div>
         <Dialog open={isDialogOpen} onOpenChange={handleCloseDialog}>
           <DialogTrigger asChild>
             <Button onClick={() => handleOpenDialog(null)} data-testid="button-add-product">
@@ -1291,84 +1444,32 @@ function ProdutosTab() {
         </Dialog>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {products.map(product => {
-          const category = categories.find(c => c.id === product.categoryId);
-          return (
-            <Card key={product.id} data-testid={`card-product-${product.id}`}>
-              <CardContent className="p-4">
-                <div className="flex items-start gap-3">
-                  {product.imageUrl ? (
-                    <img src={product.imageUrl} alt={product.name} className="w-16 h-16 object-contain rounded-lg bg-white/10 flex-shrink-0" />
-                  ) : (
-                    <div className="w-16 h-16 rounded-lg bg-secondary flex items-center justify-center flex-shrink-0">
-                      <ShoppingBag className="w-6 h-6 text-muted-foreground" />
-                    </div>
-                  )}
-                  <div className="flex-1 min-w-0">
-                    <h3 className="font-semibold truncate">{product.name}</h3>
-                    {category && (
-                      <p className="text-xs text-muted-foreground">{category.name}</p>
-                    )}
-                    <div className="flex flex-wrap items-center gap-2 mt-1">
-                      <Badge className={product.isActive ? 'bg-green-500/20 text-green-300' : 'bg-red-500/20 text-red-300'}>
-                        {product.isActive ? 'Ativo' : 'Inativo'}
-                      </Badge>
-                      {product.productType && (
-                        <Badge className="bg-primary/20 text-primary">
-                          {product.productType}
-                        </Badge>
-                      )}
-                    </div>
-                  </div>
-                </div>
-                
-                <div className="grid grid-cols-2 gap-2 mt-4 text-sm">
-                  <div className="bg-secondary/50 rounded-md p-2">
-                    <span className="text-muted-foreground text-xs block">Custo</span>
-                    <span className="font-medium">{formatCurrency(product.costPrice)}</span>
-                  </div>
-                  <div className="bg-secondary/50 rounded-md p-2">
-                    <span className="text-muted-foreground text-xs block">Venda</span>
-                    <span className="font-bold text-primary">{formatCurrency(product.salePrice)}</span>
-                  </div>
-                  <div className="bg-secondary/50 rounded-md p-2">
-                    <span className="text-muted-foreground text-xs block">Margem</span>
-                    <span className="font-medium">{product.profitMargin}%</span>
-                  </div>
-                  <div className="bg-secondary/50 rounded-md p-2">
-                    <span className="text-muted-foreground text-xs block">Estoque</span>
-                    <span className={`font-medium ${product.stock <= 5 ? 'text-destructive' : product.stock <= 15 ? 'text-primary' : 'text-foreground'}`}>
-                      {product.stock} un
-                    </span>
-                  </div>
-                </div>
-
-                <div className="flex gap-2 mt-4">
-                  <Button 
-                    size="sm" 
-                    variant="outline" 
-                    className="flex-1"
-                    onClick={() => handleOpenDialog(product)}
-                    data-testid={`button-edit-product-${product.id}`}
-                  >
-                    <Edit2 className="w-4 h-4 mr-1" />
-                    Editar
-                  </Button>
-                  <Button 
-                    size="icon" 
-                    variant="ghost"
-                    onClick={() => deleteMutation.mutate(product.id)}
-                    data-testid={`button-delete-product-${product.id}`}
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          );
-        })}
-      </div>
+      <DndContext 
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        onDragEnd={handleDragEnd}
+      >
+        <SortableContext 
+          items={products.map(p => p.id)}
+          strategy={verticalListSortingStrategy}
+        >
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {products.map(product => {
+              const category = categories.find(c => c.id === product.categoryId);
+              return (
+                <SortableProductItem
+                  key={product.id}
+                  product={product}
+                  category={category}
+                  onEdit={handleOpenDialog}
+                  onDelete={(id) => deleteMutation.mutate(id)}
+                  formatCurrency={formatCurrency}
+                />
+              );
+            })}
+          </div>
+        </SortableContext>
+      </DndContext>
     </div>
   );
 }
