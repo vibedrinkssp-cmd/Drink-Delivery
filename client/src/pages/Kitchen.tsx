@@ -35,10 +35,29 @@ export default function Kitchen() {
     },
   });
 
-  const { data: orders = [], isLoading, refetch } = useQuery<OrderWithItems[]>({
+  const { data: orders = [], isLoading, refetch } = useQuery<Order[]>({
     queryKey: ['/api/orders'],
     refetchInterval: isSSEConnected ? 30000 : 5000,
   });
+
+  const orderIds = orders.map(o => o.id).join(',');
+  
+  const { data: orderItems = [] } = useQuery<OrderItem[]>({
+    queryKey: ['/api/order-items', orderIds],
+    queryFn: async () => {
+      if (!orderIds) return [];
+      const res = await fetch(`/api/order-items?orderIds=${encodeURIComponent(orderIds)}`);
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: orders.length > 0,
+    refetchInterval: isSSEConnected ? 30000 : 5000,
+  });
+
+  const ordersWithItems: OrderWithItems[] = orders.map(order => ({
+    ...order,
+    items: orderItems.filter(item => item.orderId === order.id),
+  }));
 
   const updateStatusMutation = useMutation({
     mutationFn: async ({ orderId, status }: { orderId: string; status: OrderStatus }) => {
@@ -63,9 +82,9 @@ export default function Kitchen() {
     return null;
   }
 
-  const acceptedOrders = orders.filter(o => o.status === 'accepted');
-  const preparingOrders = orders.filter(o => o.status === 'preparing');
-  const readyOrders = orders.filter(o => o.status === 'ready');
+  const acceptedOrders = ordersWithItems.filter(o => o.status === 'accepted');
+  const preparingOrders = ordersWithItems.filter(o => o.status === 'preparing');
+  const readyOrders = ordersWithItems.filter(o => o.status === 'ready');
 
   const renderOrderActions = (order: OrderWithItems, status: string) => {
     if (status === 'accepted') {

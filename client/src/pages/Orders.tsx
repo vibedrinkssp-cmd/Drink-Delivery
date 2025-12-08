@@ -16,10 +16,29 @@ export default function Orders() {
   const [, setLocation] = useLocation();
   const { user, isAuthenticated } = useAuth();
 
-  const { data: orders = [], isLoading } = useQuery<OrderWithItems[]>({
+  const { data: orders = [], isLoading } = useQuery<Order[]>({
     queryKey: ['/api/orders', 'user', user?.id],
     enabled: !!user?.id,
   });
+
+  const userOrders = orders.filter(o => o.userId === user?.id);
+  const orderIds = userOrders.map(o => o.id).join(',');
+  
+  const { data: orderItems = [] } = useQuery<OrderItem[]>({
+    queryKey: ['/api/order-items', orderIds],
+    queryFn: async () => {
+      if (!orderIds) return [];
+      const res = await fetch(`/api/order-items?orderIds=${encodeURIComponent(orderIds)}`);
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: userOrders.length > 0,
+  });
+
+  const ordersWithItems: OrderWithItems[] = userOrders.map(order => ({
+    ...order,
+    items: orderItems.filter(item => item.orderId === order.id),
+  }));
 
   if (!isAuthenticated) {
     setLocation('/login?redirect=/pedidos');
@@ -53,7 +72,7 @@ export default function Orders() {
               </Card>
             ))}
           </div>
-        ) : orders.length === 0 ? (
+        ) : ordersWithItems.length === 0 ? (
           <Card className="bg-card border-primary/20">
             <CardContent className="p-12 text-center">
               <Package className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
@@ -72,7 +91,7 @@ export default function Orders() {
           </Card>
         ) : (
           <div className="space-y-4">
-            {orders.map((order) => (
+            {ordersWithItems.map((order) => (
               <ExpandableOrderCard
                 key={order.id}
                 order={order}

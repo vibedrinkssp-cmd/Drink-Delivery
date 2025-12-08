@@ -45,7 +45,7 @@ export default function MotoboyPage() {
 
   const currentMotoboy = motoboys.find(m => m.whatsapp === user?.whatsapp);
 
-  const { data: dispatchedOrders = [], isLoading, refetch } = useQuery<OrderWithDetails[]>({
+  const { data: dispatchedOrdersRaw = [], isLoading, refetch } = useQuery<Order[]>({
     queryKey: ['/api/motoboy', currentMotoboy?.id, 'orders'],
     queryFn: async () => {
       if (!currentMotoboy?.id) return [];
@@ -56,6 +56,36 @@ export default function MotoboyPage() {
     refetchInterval: isSSEConnected ? 30000 : 5000,
     enabled: !!currentMotoboy?.id,
   });
+
+  const orderIds = dispatchedOrdersRaw.map(o => o.id).join(',');
+  
+  const { data: orderItems = [] } = useQuery<OrderItem[]>({
+    queryKey: ['/api/order-items', orderIds],
+    queryFn: async () => {
+      if (!orderIds) return [];
+      const res = await fetch(`/api/order-items?orderIds=${encodeURIComponent(orderIds)}`);
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: dispatchedOrdersRaw.length > 0,
+    refetchInterval: isSSEConnected ? 30000 : 5000,
+  });
+
+  const { data: addresses = [] } = useQuery<Address[]>({
+    queryKey: ['/api/addresses'],
+  });
+
+  const { data: users = [] } = useQuery<{ id: string; name: string; whatsapp: string }[]>({
+    queryKey: ['/api/users'],
+  });
+
+  const dispatchedOrders: OrderWithDetails[] = dispatchedOrdersRaw.map(order => ({
+    ...order,
+    items: orderItems.filter(item => item.orderId === order.id),
+    address: addresses.find(a => a.id === order.addressId),
+    userName: users.find(u => u.id === order.userId)?.name,
+    userWhatsapp: users.find(u => u.id === order.userId)?.whatsapp,
+  }));
 
   const updateStatusMutation = useMutation({
     mutationFn: async ({ orderId, status }: { orderId: string; status: string }) => {
