@@ -485,42 +485,51 @@ export async function registerRoutes(
   });
 
   app.post("/api/orders", async (req, res) => {
-    const order = await storage.createOrder(req.body);
-    
-    if (req.body.items && Array.isArray(req.body.items)) {
-      for (const item of req.body.items) {
-        await storage.createOrderItem({
-          orderId: order.id,
-          productId: item.productId,
-          productName: item.productName,
-          quantity: item.quantity,
-          unitPrice: item.unitPrice,
-          totalPrice: item.totalPrice,
-        });
-        
-        // Deduct stock for each item
-        const product = await storage.getProduct(item.productId);
-        if (product) {
-          const previousStock = product.stock;
-          const newStock = Math.max(0, previousStock - item.quantity);
-          await storage.updateProduct(item.productId, { stock: newStock });
-          
-          // Log the stock change
-          await storage.createStockLog({
+    try {
+      const order = await storage.createOrder(req.body);
+      
+      if (req.body.items && Array.isArray(req.body.items)) {
+        for (const item of req.body.items) {
+          await storage.createOrderItem({
+            orderId: order.id,
             productId: item.productId,
-            previousStock,
-            newStock,
-            change: -item.quantity,
-            reason: `Pedido #${order.id.slice(0, 8)}`,
+            productName: item.productName,
+            quantity: item.quantity,
+            unitPrice: item.unitPrice,
+            totalPrice: item.totalPrice,
           });
+          
+          // Deduct stock for each item
+          const product = await storage.getProduct(item.productId);
+          if (product) {
+            const previousStock = product.stock;
+            const newStock = Math.max(0, previousStock - item.quantity);
+            await storage.updateProduct(item.productId, { stock: newStock });
+            
+            // Log the stock change
+            await storage.createStockLog({
+              productId: item.productId,
+              previousStock,
+              newStock,
+              change: -item.quantity,
+              reason: `Pedido #${order.id.slice(0, 8)}`,
+            });
+          }
         }
       }
+      
+      // Broadcast new order to all connected clients
+      broadcastOrderUpdate('order_created', { orderId: order.id, status: order.status });
+      
+      res.status(201).json(order);
+    } catch (error: any) {
+      console.error("Error creating order:", error);
+      if (error.code === '23503') {
+        res.status(400).json({ error: "Dados invalidos. Faca login novamente e cadastre um endereco." });
+      } else {
+        res.status(500).json({ error: "Erro ao criar pedido" });
+      }
     }
-    
-    // Broadcast new order to all connected clients
-    broadcastOrderUpdate('order_created', { orderId: order.id, status: order.status });
-    
-    res.status(201).json(order);
   });
 
   app.patch("/api/orders/:id/status", async (req, res) => {
