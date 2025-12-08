@@ -36,7 +36,9 @@ import {
   Eye,
   Phone,
   Key,
-  Power
+  Power,
+  Wifi,
+  WifiOff
 } from 'lucide-react';
 import { useRef} from 'react';
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
@@ -51,6 +53,7 @@ import { Switch } from '@/components/ui/switch';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { useAuth } from '@/lib/auth';
 import { useToast } from '@/hooks/use-toast';
+import { useOrderUpdates } from '@/hooks/use-order-updates';
 import { apiRequest, queryClient } from '@/lib/queryClient';
 import type { Order, Product, Category, Banner, Motoboy, User, Settings as SettingsType } from '@shared/schema';
 import { ORDER_STATUS_LABELS, PAYMENT_METHOD_LABELS, ORDER_TYPE_LABELS, type OrderStatus, type PaymentMethod, type OrderType } from '@shared/schema';
@@ -1624,6 +1627,16 @@ export default function AdminDashboard() {
   const { user, role, logout } = useAuth();
   const [, setLocation] = useLocation();
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const { toast } = useToast();
+  const [isSSEConnected, setIsSSEConnected] = useState(false);
+
+  useOrderUpdates({
+    onConnected: () => setIsSSEConnected(true),
+    onDisconnected: () => setIsSSEConnected(false),
+    onOrderCreated: () => {
+      toast({ title: 'Novo pedido recebido!' });
+    },
+  });
 
   if (role !== 'admin') {
     setLocation('/admin-login');
@@ -1665,6 +1678,14 @@ export default function AdminDashboard() {
             <Badge className="bg-primary/20 text-primary hidden sm:inline-flex">Admin</Badge>
           </div>
           <div className="flex items-center gap-2">
+            <Badge 
+              variant="outline" 
+              className={isSSEConnected ? 'border-green-500 text-green-500' : 'border-red-500 text-red-500'}
+              data-testid="badge-sse-status"
+            >
+              {isSSEConnected ? <Wifi className="w-3 h-3 mr-1" /> : <WifiOff className="w-3 h-3 mr-1" />}
+              {isSSEConnected ? 'Ao Vivo' : 'Offline'}
+            </Badge>
             <span className="text-sm text-muted-foreground hidden sm:inline">{user?.name}</span>
             <Button 
               size="sm"
