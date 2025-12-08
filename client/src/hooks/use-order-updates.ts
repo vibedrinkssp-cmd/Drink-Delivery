@@ -17,6 +17,11 @@ export function useOrderUpdates(options: UseOrderUpdatesOptions = {}) {
   const reconnectAttempts = useRef(0);
   const maxReconnectAttempts = 10;
 
+  const optionsRef = useRef(options);
+  useEffect(() => {
+    optionsRef.current = options;
+  }, [options]);
+
   const connect = useCallback(() => {
     if (eventSourceRef.current?.readyState === EventSource.OPEN) {
       return;
@@ -28,49 +33,44 @@ export function useOrderUpdates(options: UseOrderUpdatesOptions = {}) {
 
       eventSource.addEventListener('connected', () => {
         reconnectAttempts.current = 0;
-        options.onConnected?.();
+        optionsRef.current.onConnected?.();
       });
 
       eventSource.addEventListener('order_created', (event) => {
         const data = JSON.parse(event.data);
-        // Invalidate all order-related queries to update all screens
         queryClient.invalidateQueries({ predicate: (query) => {
           const key = query.queryKey;
           return Array.isArray(key) && key[0] === '/api/orders';
         }});
-        options.onOrderCreated?.(data);
+        optionsRef.current.onOrderCreated?.(data);
       });
 
       eventSource.addEventListener('order_status_changed', (event) => {
         const data = JSON.parse(event.data);
-        // Invalidate all order-related queries to update all screens
         queryClient.invalidateQueries({ predicate: (query) => {
           const key = query.queryKey;
           return Array.isArray(key) && key[0] === '/api/orders';
         }});
-        options.onOrderStatusChanged?.(data);
+        optionsRef.current.onOrderStatusChanged?.(data);
       });
 
       eventSource.addEventListener('order_assigned', (event) => {
         const data = JSON.parse(event.data);
-        // Invalidate all order-related queries to update all screens
         queryClient.invalidateQueries({ predicate: (query) => {
           const key = query.queryKey;
           return Array.isArray(key) && key[0] === '/api/orders';
         }});
-        options.onOrderAssigned?.(data);
+        optionsRef.current.onOrderAssigned?.(data);
       });
 
       eventSource.addEventListener('heartbeat', () => {
-        // Keep connection alive
       });
 
       eventSource.onerror = () => {
         eventSource.close();
         eventSourceRef.current = null;
-        options.onDisconnected?.();
+        optionsRef.current.onDisconnected?.();
 
-        // Attempt to reconnect with exponential backoff
         if (reconnectAttempts.current < maxReconnectAttempts) {
           const delay = Math.min(1000 * Math.pow(2, reconnectAttempts.current), 30000);
           reconnectAttempts.current++;
@@ -83,7 +83,7 @@ export function useOrderUpdates(options: UseOrderUpdatesOptions = {}) {
     } catch (error) {
       console.error('Failed to connect to SSE:', error);
     }
-  }, [options]);
+  }, []);
 
   const disconnect = useCallback(() => {
     if (reconnectTimeoutRef.current) {
