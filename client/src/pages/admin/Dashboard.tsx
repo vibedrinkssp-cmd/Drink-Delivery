@@ -85,19 +85,7 @@ const tabs = [
   { id: 'configuracoes', label: 'Configuracoes', icon: Settings },
 ];
 
-function getCategoryIcon(iconUrl: string | null) {
-  switch (iconUrl) {
-    case 'wine': return Wine;
-    case 'beer': return Beer;
-    case 'grape': return Grape;
-    case 'snowflake': return Snowflake;
-    case 'zap': return Zap;
-    case 'glass-water': return GlassWater;
-    case 'utensils': return Utensils;
-    case 'droplets': return Droplets;
-    default: return Grid3X3;
-  }
-}
+import { getCategoryIcon, CATEGORY_ICONS, suggestIconForCategory } from '@/lib/category-icons';
 
 function formatCurrency(value: number | string): string {
   const num = typeof value === 'string' ? parseFloat(value) : value;
@@ -126,6 +114,7 @@ function StatusBadge({ status }: { status: OrderStatus }) {
     preparing: 'bg-orange-500/20 text-orange-300 border-orange-500/30',
     ready: 'bg-green-500/20 text-green-300 border-green-500/30',
     dispatched: 'bg-purple-500/20 text-purple-300 border-purple-500/30',
+    arrived: 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30',
     delivered: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30',
     cancelled: 'bg-red-500/20 text-red-300 border-red-500/30',
   };
@@ -2182,6 +2171,7 @@ function SortableCategoryItem({
 function CategoriasTab() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
+  const [selectedIcon, setSelectedIcon] = useState<string>('glass-water');
   const { toast } = useToast();
 
   const { data: categories = [] } = useQuery<Category[]>({
@@ -2276,7 +2266,7 @@ function CategoriasTab() {
     const formData = new FormData(e.currentTarget);
     const data = {
       name: formData.get('name') as string,
-      iconUrl: formData.get('iconUrl') as string || null,
+      iconUrl: selectedIcon,
       sortOrder: parseInt(formData.get('sortOrder') as string) || 0,
       isActive: true,
     };
@@ -2288,6 +2278,16 @@ function CategoriasTab() {
     }
   };
 
+  const handleOpenCategoryDialog = (cat: Category | null) => {
+    setEditingCategory(cat);
+    if (cat) {
+      setSelectedIcon(cat.iconUrl || 'glass-water');
+    } else {
+      setSelectedIcon('glass-water');
+    }
+    setIsDialogOpen(true);
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
@@ -2297,12 +2297,12 @@ function CategoriasTab() {
         </div>
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
           <DialogTrigger asChild>
-            <Button onClick={() => setEditingCategory(null)} data-testid="button-add-category">
+            <Button onClick={() => handleOpenCategoryDialog(null)} data-testid="button-add-category">
               <Plus className="w-4 h-4 mr-2" />
               Nova Categoria
             </Button>
           </DialogTrigger>
-          <DialogContent>
+          <DialogContent className="max-w-lg">
             <DialogHeader>
               <DialogTitle>{editingCategory ? 'Editar Categoria' : 'Nova Categoria'}</DialogTitle>
             </DialogHeader>
@@ -2312,8 +2312,31 @@ function CategoriasTab() {
                 <Input id="name" name="name" defaultValue={editingCategory?.name} required data-testid="input-category-name" />
               </div>
               <div>
-                <Label htmlFor="iconUrl">URL do Icone</Label>
-                <Input id="iconUrl" name="iconUrl" defaultValue={editingCategory?.iconUrl || ''} data-testid="input-category-icon" />
+                <Label>Icone</Label>
+                <div className="grid grid-cols-6 gap-2 mt-2 max-h-[200px] overflow-y-auto p-2 border rounded-md">
+                  {CATEGORY_ICONS.map((iconOption) => {
+                    const IconComp = iconOption.icon;
+                    return (
+                      <button
+                        key={iconOption.id}
+                        type="button"
+                        onClick={() => setSelectedIcon(iconOption.id)}
+                        className={`p-2 rounded-md flex flex-col items-center gap-1 transition-all ${
+                          selectedIcon === iconOption.id 
+                            ? 'bg-primary/20 border-2 border-primary' 
+                            : 'bg-muted/50 border border-transparent hover:border-primary/30'
+                        }`}
+                        title={iconOption.name}
+                        data-testid={`button-icon-${iconOption.id}`}
+                      >
+                        <IconComp className={`w-5 h-5 ${selectedIcon === iconOption.id ? 'text-primary' : 'text-muted-foreground'}`} />
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Selecionado: {CATEGORY_ICONS.find(i => i.id === selectedIcon)?.name || 'Agua'}
+                </p>
               </div>
               <div>
                 <Label htmlFor="sortOrder">Ordem</Label>
@@ -2341,7 +2364,7 @@ function CategoriasTab() {
               <SortableCategoryItem
                 key={category.id}
                 category={category}
-                onEdit={(cat) => { setEditingCategory(cat); setIsDialogOpen(true); }}
+                onEdit={(cat) => handleOpenCategoryDialog(cat)}
                 onDelete={(id) => deleteMutation.mutate(id)}
               />
             ))}

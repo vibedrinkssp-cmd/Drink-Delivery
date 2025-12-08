@@ -1,8 +1,9 @@
 import { useRef } from 'react';
-import { ChevronLeft, ChevronRight, Flame } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Flame, Grid3X3 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { Category } from '@shared/schema';
 import { TRENDING_CATEGORY_ID } from '@/pages/Home';
+import { getCategoryIcon } from '@/lib/category-icons';
 
 interface CategoryCarouselProps {
   categories: Category[];
@@ -105,20 +106,17 @@ export function CategoryCarousel({ categories, selectedCategory, onSelectCategor
                 }`}
                 data-testid={`button-category-${category.id}`}
               >
-                <div className={`w-16 h-16 rounded-full overflow-hidden flex items-center justify-center ${
-                  selectedCategory === category.id ? 'border-2 border-primary' : 'border border-primary/30'
-                } bg-secondary`}>
-                  {category.iconUrl ? (
-                    <img 
-                      src={category.iconUrl} 
-                      alt={category.name}
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <span className="text-2xl font-bold text-primary">
-                      {category.name.charAt(0)}
-                    </span>
-                  )}
+                <div className={`w-16 h-16 rounded-full flex items-center justify-center ${
+                  selectedCategory === category.id ? 'border-2 border-primary bg-primary/10' : 'border border-primary/30 bg-secondary'
+                }`}>
+                  {(() => {
+                    const IconComponent = getCategoryIcon(category.iconUrl);
+                    return (
+                      <IconComponent 
+                        className={`h-7 w-7 ${selectedCategory === category.id ? 'text-primary' : 'text-primary/70'}`}
+                      />
+                    );
+                  })()}
                 </div>
                 <span className={`text-sm font-medium text-center ${
                   selectedCategory === category.id ? 'text-primary' : 'text-white'
