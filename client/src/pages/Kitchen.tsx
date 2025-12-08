@@ -96,6 +96,12 @@ export default function Kitchen() {
   const preparingOrders = ordersWithItems.filter(o => o.status === 'preparing');
   const readyOrders = ordersWithItems.filter(o => o.status === 'ready');
 
+  const openWhatsApp = (phone: string) => {
+    const cleanPhone = phone.replace(/\D/g, '');
+    const formattedPhone = cleanPhone.startsWith('55') ? cleanPhone : `55${cleanPhone}`;
+    window.open(`https://wa.me/${formattedPhone}`, '_blank');
+  };
+
   const renderOrderActions = (order: OrderWithItems, status: string) => {
     if (status === 'accepted') {
       return (
@@ -223,6 +229,7 @@ export default function Kitchen() {
                       elapsedTimeDate={order.acceptedAt || order.createdAt}
                       statusColor="bg-blue-500/20 text-blue-400 border-blue-500/30"
                       actions={renderOrderActions(order, 'accepted')}
+                      onOpenWhatsApp={openWhatsApp}
                     />
                   ))
                 )}
@@ -253,6 +260,7 @@ export default function Kitchen() {
                       elapsedTimeDate={order.preparingAt || order.createdAt}
                       statusColor="bg-orange-500/20 text-orange-400 border-orange-500/30"
                       actions={renderOrderActions(order, 'preparing')}
+                      onOpenWhatsApp={openWhatsApp}
                     />
                   ))
                 )}
@@ -283,6 +291,7 @@ export default function Kitchen() {
                       elapsedTimeDate={order.readyAt || order.createdAt}
                       statusColor="bg-green-500/20 text-green-400 border-green-500/30"
                       actions={renderOrderActions(order, 'ready')}
+                      onOpenWhatsApp={openWhatsApp}
                     />
                   ))
                 )}
