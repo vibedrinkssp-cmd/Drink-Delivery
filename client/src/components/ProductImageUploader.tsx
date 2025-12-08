@@ -1,14 +1,15 @@
-import { useState, useCallback, useEffect } from "react";
-import { Camera, Upload, X, ImageIcon } from "lucide-react";
+import { useState, useCallback, useEffect, useRef } from "react";
+import { Camera, Upload, X, ImageIcon, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { ObjectUploader } from "./ObjectUploader";
-import { apiRequest } from "@/lib/queryClient";
+import { uploadImage, getStorageUrl } from "@/lib/supabase";
+import { useToast } from "@/hooks/use-toast";
 
 interface ProductImageUploaderProps {
   currentImageUrl?: string | null;
   onImageUploaded: (imageUrl: string) => void;
   onImageRemoved?: () => void;
   disabled?: boolean;
+  folder?: string;
 }
 
 export function ProductImageUploader({
@@ -16,59 +17,64 @@ export function ProductImageUploader({
   onImageUploaded,
   onImageRemoved,
   disabled = false,
+  folder = "products",
 }: ProductImageUploaderProps) {
   const [previewUrl, setPreviewUrl] = useState<string | null>(currentImageUrl || null);
   const [isUploading, setIsUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const { toast } = useToast();
 
   useEffect(() => {
     setPreviewUrl(currentImageUrl || null);
   }, [currentImageUrl]);
 
-  const getUploadUrl = useCallback(async () => {
-    const response = await apiRequest("POST", "/api/objects/upload");
-    const data = await response.json();
-    return {
-      method: "PUT" as const,
-      url: data.uploadURL,
-    };
-  }, []);
+  const handleFileSelect = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
 
-  const handleUploadStart = useCallback(() => {
-    setIsUploading(true);
-  }, []);
-
-  const handleUploadError = useCallback(() => {
-    setIsUploading(false);
-  }, []);
-
-  const normalizeObjectPath = useCallback((signedUrl: string): string => {
-    try {
-      const url = new URL(signedUrl);
-      const pathname = url.pathname;
-      const uploadsMatch = pathname.match(/\/uploads\/([a-f0-9-]+)/i);
-      if (uploadsMatch) {
-        return `/objects/uploads/${uploadsMatch[1]}`;
-      }
-      return signedUrl.split("?")[0];
-    } catch {
-      return signedUrl.split("?")[0];
+    if (!file.type.startsWith('image/')) {
+      toast({
+        title: "Erro",
+        description: "Por favor, selecione uma imagem valida.",
+        variant: "destructive",
+      });
+      return;
     }
-  }, []);
 
-  const handleUploadComplete = useCallback(
-    (result: { successful?: Array<{ uploadURL?: string }> }) => {
+    if (file.size > 10 * 1024 * 1024) {
+      toast({
+        title: "Erro",
+        description: "A imagem deve ter no maximo 10MB.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsUploading(true);
+
+    try {
+      const { publicUrl } = await uploadImage(file, folder);
+      setPreviewUrl(publicUrl);
+      onImageUploaded(publicUrl);
+      toast({
+        title: "Sucesso",
+        description: "Imagem enviada com sucesso!",
+      });
+    } catch (error) {
+      console.error("Upload error:", error);
+      toast({
+        title: "Erro",
+        description: "Falha ao enviar imagem. Tente novamente.",
+        variant: "destructive",
+      });
+    } finally {
       setIsUploading(false);
-      if (result.successful && result.successful.length > 0) {
-        const uploadedFile = result.successful[0];
-        if (uploadedFile.uploadURL) {
-          const normalizedPath = normalizeObjectPath(uploadedFile.uploadURL);
-          setPreviewUrl(normalizedPath);
-          onImageUploaded(normalizedPath);
-        }
+      if (event.target) {
+        event.target.value = '';
       }
-    },
-    [onImageUploaded, normalizeObjectPath]
-  );
+    }
+  }, [folder, onImageUploaded, toast]);
 
   const handleRemoveImage = useCallback(() => {
     setPreviewUrl(null);
@@ -77,19 +83,32 @@ export function ProductImageUploader({
 
   const getImageSrc = (url: string | null): string | null => {
     if (!url) return null;
-    if (url.startsWith("/objects/")) {
-      return url;
-    }
-    if (url.startsWith("https://")) {
-      return url;
-    }
-    return url;
+    if (url.startsWith("http")) return url;
+    return getStorageUrl(url);
   };
 
   const imageSrc = getImageSrc(previewUrl);
 
   return (
     <div className="space-y-3">
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        onChange={handleFileSelect}
+        className="hidden"
+        data-testid="input-file-upload"
+      />
+      <input
+        ref={cameraInputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        onChange={handleFileSelect}
+        className="hidden"
+        data-testid="input-camera-capture"
+      />
+
       <div className="relative w-full aspect-square max-w-[200px] mx-auto bg-muted rounded-md overflow-hidden border border-border">
         {imageSrc ? (
           <>
@@ -121,43 +140,33 @@ export function ProductImageUploader({
         
         {isUploading && (
           <div className="absolute inset-0 bg-background/80 flex items-center justify-center">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
           </div>
         )}
       </div>
 
       <div className="flex gap-2 justify-center">
-        <ObjectUploader
-          maxNumberOfFiles={1}
-          maxFileSize={10485760}
-          allowedFileTypes={["image/*"]}
-          onGetUploadParameters={getUploadUrl}
-          onUploadStart={handleUploadStart}
-          onComplete={handleUploadComplete}
-          onError={handleUploadError}
-          buttonVariant="outline"
-          buttonSize="default"
+        <Button
+          variant="outline"
+          onClick={() => fileInputRef.current?.click()}
           disabled={disabled || isUploading}
+          type="button"
+          data-testid="button-upload-image"
         >
           <Upload className="h-4 w-4 mr-2" />
           Enviar Imagem
-        </ObjectUploader>
+        </Button>
 
-        <ObjectUploader
-          maxNumberOfFiles={1}
-          maxFileSize={10485760}
-          allowedFileTypes={["image/*"]}
-          onGetUploadParameters={getUploadUrl}
-          onUploadStart={handleUploadStart}
-          onComplete={handleUploadComplete}
-          onError={handleUploadError}
-          buttonVariant="outline"
-          buttonSize="default"
+        <Button
+          variant="outline"
+          onClick={() => cameraInputRef.current?.click()}
           disabled={disabled || isUploading}
+          type="button"
+          data-testid="button-camera-capture"
         >
           <Camera className="h-4 w-4 mr-2" />
           Camera
-        </ObjectUploader>
+        </Button>
       </div>
     </div>
   );
