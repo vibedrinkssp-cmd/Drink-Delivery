@@ -1,24 +1,35 @@
+import { useState } from 'react';
 import { useLocation } from 'wouter';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft, Package } from 'lucide-react';
+import { ArrowLeft, Package, Wifi, WifiOff, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Badge } from '@/components/ui/badge';
 import { useAuth } from '@/lib/auth';
+import { useOrderUpdates } from '@/hooks/use-order-updates';
 import { ExpandableOrderCard } from '@/components/ExpandableOrderCard';
-import type { Order, OrderItem } from '@shared/schema';
+import type { Order, OrderItem, Motoboy } from '@shared/schema';
 
-interface OrderWithItems extends Order {
+interface OrderWithDetails extends Order {
   items: OrderItem[];
+  motoboy?: Motoboy;
 }
 
 export default function Orders() {
   const [, setLocation] = useLocation();
   const { user, isAuthenticated } = useAuth();
+  const [isSSEConnected, setIsSSEConnected] = useState(false);
 
-  const { data: orders = [], isLoading } = useQuery<Order[]>({
+  useOrderUpdates({
+    onConnected: () => setIsSSEConnected(true),
+    onDisconnected: () => setIsSSEConnected(false),
+  });
+
+  const { data: orders = [], isLoading, refetch } = useQuery<Order[]>({
     queryKey: ['/api/orders', 'user', user?.id],
     enabled: !!user?.id,
+    refetchInterval: isSSEConnected ? 30000 : 5000,
   });
 
   const userOrders = orders.filter(o => o.userId === user?.id);
@@ -33,11 +44,17 @@ export default function Orders() {
       return res.json();
     },
     enabled: userOrders.length > 0,
+    refetchInterval: isSSEConnected ? 30000 : 5000,
   });
 
-  const ordersWithItems: OrderWithItems[] = userOrders.map(order => ({
+  const { data: motoboys = [] } = useQuery<Motoboy[]>({
+    queryKey: ['/api/motoboys'],
+  });
+
+  const ordersWithDetails: OrderWithDetails[] = userOrders.map(order => ({
     ...order,
     items: orderItems.filter(item => item.orderId === order.id),
+    motoboy: order.motoboyId ? motoboys.find(m => m.id === order.motoboyId) : undefined,
   }));
 
   if (!isAuthenticated) {
@@ -48,15 +65,38 @@ export default function Orders() {
   return (
     <div className="min-h-screen bg-background py-8 px-4">
       <div className="max-w-4xl mx-auto">
-        <Button
-          variant="ghost"
-          className="mb-6 text-primary"
-          onClick={() => setLocation('/')}
-          data-testid="button-back"
-        >
-          <ArrowLeft className="h-5 w-5 mr-2" />
-          Voltar ao cardapio
-        </Button>
+        <div className="flex items-center justify-between mb-6 flex-wrap gap-2">
+          <Button
+            variant="ghost"
+            className="text-primary"
+            onClick={() => setLocation('/')}
+            data-testid="button-back"
+          >
+            <ArrowLeft className="h-5 w-5 mr-2" />
+            Voltar ao cardapio
+          </Button>
+          <div className="flex items-center gap-2">
+            <Badge 
+              className={isSSEConnected 
+                ? "bg-green-500/20 text-green-400 border-green-500/30" 
+                : "bg-yellow-500/20 text-yellow-400 border-yellow-500/30"
+              }
+              data-testid="badge-connection-status"
+            >
+              {isSSEConnected ? <Wifi className="h-3 w-3 mr-1" /> : <WifiOff className="h-3 w-3 mr-1" />}
+              {isSSEConnected ? 'Ao Vivo' : 'Atualizando...'}
+            </Badge>
+            <Button
+              variant="outline"
+              size="sm"
+              className="border-primary/50 text-primary"
+              onClick={() => refetch()}
+              data-testid="button-refresh"
+            >
+              <RefreshCw className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
 
         <h1 className="font-serif text-3xl text-primary mb-8">Meus Pedidos</h1>
 
@@ -72,7 +112,7 @@ export default function Orders() {
               </Card>
             ))}
           </div>
-        ) : ordersWithItems.length === 0 ? (
+        ) : ordersWithDetails.length === 0 ? (
           <Card className="bg-card border-primary/20">
             <CardContent className="p-12 text-center">
               <Package className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
@@ -91,12 +131,12 @@ export default function Orders() {
           </Card>
         ) : (
           <div className="space-y-4">
-            {ordersWithItems.map((order) => (
+            {ordersWithDetails.map((order) => (
               <ExpandableOrderCard
                 key={order.id}
                 order={order}
                 variant="customer"
-                defaultExpanded={false}
+                defaultExpanded={order.status !== 'delivered' && order.status !== 'cancelled'}
                 showActions={false}
               />
             ))}
