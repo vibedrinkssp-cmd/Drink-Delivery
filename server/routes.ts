@@ -548,6 +548,17 @@ export async function registerRoutes(
     res.json(items);
   });
 
+  app.delete("/api/orders/:id", async (req, res) => {
+    const order = await storage.getOrder(req.params.id);
+    if (!order) return res.status(404).json({ error: "Order not found" });
+    
+    await storage.deleteOrder(req.params.id);
+    
+    broadcastOrderUpdate('order_deleted', { orderId: req.params.id });
+    
+    res.status(204).send();
+  });
+
   app.get("/api/banners", async (_req, res) => {
     const banners = await storage.getBanners();
     res.json(banners);

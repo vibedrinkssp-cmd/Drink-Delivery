@@ -141,6 +141,19 @@ function OrdersTab() {
     },
   });
 
+  const deleteOrderMutation = useMutation({
+    mutationFn: async (orderId: string) => {
+      return apiRequest('DELETE', `/api/orders/${orderId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/orders'] });
+      toast({ title: 'Pedido excluido!' });
+    },
+    onError: () => {
+      toast({ title: 'Erro ao excluir pedido', variant: 'destructive' });
+    },
+  });
+
   const filteredOrders = orders.filter(order => 
     statusFilter === 'all' || order.status === statusFilter
   );
@@ -185,7 +198,23 @@ function OrdersTab() {
                   <CardTitle className="text-lg">Pedido #{order.id.slice(0, 8)}</CardTitle>
                   <StatusBadge status={order.status as OrderStatus} />
                 </div>
-                <span className="text-sm text-muted-foreground">{formatDate(order.createdAt)}</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-muted-foreground">{formatDate(order.createdAt)}</span>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-7 w-7 text-muted-foreground/50 hover:text-destructive"
+                    onClick={() => {
+                      if (confirm('Tem certeza que deseja excluir este pedido?')) {
+                        deleteOrderMutation.mutate(order.id);
+                      }
+                    }}
+                    disabled={deleteOrderMutation.isPending}
+                    data-testid={`button-delete-order-${order.id}`}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="flex flex-wrap gap-4 text-sm">
@@ -800,6 +829,19 @@ function PDVTab() {
     },
   });
 
+  const deleteOrderMutation = useMutation({
+    mutationFn: async (orderId: string) => {
+      return apiRequest('DELETE', `/api/orders/${orderId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/orders'] });
+      toast({ title: 'Venda excluida!' });
+    },
+    onError: () => {
+      toast({ title: 'Erro ao excluir venda', variant: 'destructive' });
+    },
+  });
+
   const counterOrders = orders.filter(order => order.orderType === 'counter');
 
   return (
@@ -829,7 +871,23 @@ function PDVTab() {
                   <CardTitle className="text-lg">Venda #{order.id.slice(0, 8)}</CardTitle>
                   <StatusBadge status={order.status as OrderStatus} />
                 </div>
-                <span className="text-sm text-muted-foreground">{formatDate(order.createdAt)}</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-muted-foreground">{formatDate(order.createdAt)}</span>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-7 w-7 text-muted-foreground/50 hover:text-destructive"
+                    onClick={() => {
+                      if (confirm('Tem certeza que deseja excluir esta venda?')) {
+                        deleteOrderMutation.mutate(order.id);
+                      }
+                    }}
+                    disabled={deleteOrderMutation.isPending}
+                    data-testid={`button-delete-pdv-order-${order.id}`}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="flex flex-wrap gap-4 text-sm">
