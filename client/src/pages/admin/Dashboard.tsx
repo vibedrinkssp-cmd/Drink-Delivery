@@ -1242,11 +1242,17 @@ function ProdutosTab() {
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [uploadedImageUrl, setUploadedImageUrl] = useState<string | null>(null);
+  const [costPrice, setCostPrice] = useState<string>('');
+  const [profitMargin, setProfitMargin] = useState<string>('');
+  const [salePrice, setSalePrice] = useState<string>('');
   const { toast } = useToast();
 
   const handleOpenDialog = (product: Product | null) => {
     setEditingProduct(product);
     setUploadedImageUrl(product?.imageUrl || null);
+    setCostPrice(product?.costPrice || '');
+    setProfitMargin(product?.profitMargin || '');
+    setSalePrice(product?.salePrice || '');
     setIsDialogOpen(true);
   };
 
@@ -1254,8 +1260,41 @@ function ProdutosTab() {
     if (!open) {
       setEditingProduct(null);
       setUploadedImageUrl(null);
+      setCostPrice('');
+      setProfitMargin('');
+      setSalePrice('');
     }
     setIsDialogOpen(open);
+  };
+
+  const handleCostPriceChange = (value: string) => {
+    setCostPrice(value);
+    const cost = parseFloat(value);
+    const margin = parseFloat(profitMargin);
+    if (!isNaN(cost) && !isNaN(margin) && cost > 0) {
+      const newSalePrice = cost * (1 + margin / 100);
+      setSalePrice(newSalePrice.toFixed(2));
+    }
+  };
+
+  const handleProfitMarginChange = (value: string) => {
+    setProfitMargin(value);
+    const cost = parseFloat(costPrice);
+    const margin = parseFloat(value);
+    if (!isNaN(cost) && !isNaN(margin) && cost > 0) {
+      const newSalePrice = cost * (1 + margin / 100);
+      setSalePrice(newSalePrice.toFixed(2));
+    }
+  };
+
+  const handleSalePriceChange = (value: string) => {
+    setSalePrice(value);
+    const cost = parseFloat(costPrice);
+    const sale = parseFloat(value);
+    if (!isNaN(cost) && !isNaN(sale) && cost > 0) {
+      const newMargin = ((sale - cost) / cost) * 100;
+      setProfitMargin(newMargin.toFixed(2));
+    }
   };
 
   const { data: products = [] } = useQuery<Product[]>({
@@ -1340,9 +1379,9 @@ function ProdutosTab() {
       name: formData.get('name') as string,
       description: formData.get('description') as string,
       categoryId: formData.get('categoryId') as string,
-      costPrice: formData.get('costPrice') as string,
-      profitMargin: formData.get('profitMargin') as string,
-      salePrice: formData.get('salePrice') as string,
+      costPrice: costPrice,
+      profitMargin: profitMargin,
+      salePrice: salePrice,
       stock: parseInt(formData.get('stock') as string) || 0,
       imageUrl: uploadedImageUrl || editingProduct?.imageUrl || null,
       productType: formData.get('productType') as string || null,
@@ -1400,15 +1439,42 @@ function ProdutosTab() {
               <div className="grid grid-cols-3 gap-2">
                 <div>
                   <Label htmlFor="costPrice">Custo</Label>
-                  <Input id="costPrice" name="costPrice" type="number" step="0.01" defaultValue={editingProduct?.costPrice || ''} required data-testid="input-product-cost" />
+                  <Input 
+                    id="costPrice" 
+                    name="costPrice" 
+                    type="number" 
+                    step="0.01" 
+                    value={costPrice} 
+                    onChange={(e) => handleCostPriceChange(e.target.value)}
+                    required 
+                    data-testid="input-product-cost" 
+                  />
                 </div>
                 <div>
                   <Label htmlFor="profitMargin">Margem %</Label>
-                  <Input id="profitMargin" name="profitMargin" type="number" step="0.01" defaultValue={editingProduct?.profitMargin || ''} required data-testid="input-product-margin" />
+                  <Input 
+                    id="profitMargin" 
+                    name="profitMargin" 
+                    type="number" 
+                    step="0.01" 
+                    value={profitMargin} 
+                    onChange={(e) => handleProfitMarginChange(e.target.value)}
+                    required 
+                    data-testid="input-product-margin" 
+                  />
                 </div>
                 <div>
                   <Label htmlFor="salePrice">Venda</Label>
-                  <Input id="salePrice" name="salePrice" type="number" step="0.01" defaultValue={editingProduct?.salePrice || ''} required data-testid="input-product-price" />
+                  <Input 
+                    id="salePrice" 
+                    name="salePrice" 
+                    type="number" 
+                    step="0.01" 
+                    value={salePrice} 
+                    onChange={(e) => handleSalePriceChange(e.target.value)}
+                    required 
+                    data-testid="input-product-price" 
+                  />
                 </div>
               </div>
               <div>
