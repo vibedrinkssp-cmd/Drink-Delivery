@@ -62,6 +62,16 @@ export default function Login() {
       const response = await apiRequest('POST', '/api/auth/check-phone', { whatsapp: cleanPhone });
       const data = await response.json();
       
+      if (data.isMotoboy) {
+        toast({ 
+          title: 'Acesso de motoboy', 
+          description: 'Use o login de funcionarios para acessar', 
+          variant: 'destructive' 
+        });
+        setTimeout(() => setLocation('/admin-login'), 2000);
+        return;
+      }
+      
       if (data.exists) {
         setUserName(data.userName);
         setStep('password');

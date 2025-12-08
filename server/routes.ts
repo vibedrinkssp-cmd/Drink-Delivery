@@ -103,11 +103,16 @@ export async function registerRoutes(
 
   app.post("/api/auth/check-phone", async (req, res) => {
     const { whatsapp } = req.body;
+    const motoboy = await storage.getMotoboyByWhatsapp(whatsapp);
+    if (motoboy) {
+      res.json({ exists: true, userName: motoboy.name, isMotoboy: true });
+      return;
+    }
     const user = await storage.getUserByWhatsapp(whatsapp);
     if (user) {
-      res.json({ exists: true, userName: user.name });
+      res.json({ exists: true, userName: user.name, isMotoboy: false });
     } else {
-      res.json({ exists: false });
+      res.json({ exists: false, isMotoboy: false });
     }
   });
 
@@ -116,6 +121,15 @@ export async function registerRoutes(
     
     if (!password || !/^\d{6}$/.test(password)) {
       return res.status(400).json({ success: false, error: "Senha deve ter exatamente 6 digitos" });
+    }
+    
+    const motoboy = await storage.getMotoboyByWhatsapp(whatsapp);
+    if (motoboy) {
+      return res.status(403).json({ 
+        success: false, 
+        error: "Motoboys devem usar o login de funcionarios",
+        isMotoboy: true
+      });
     }
     
     const user = await storage.getUserByWhatsapp(whatsapp);
@@ -143,11 +157,55 @@ export async function registerRoutes(
     res.json({ success: true, user: safeUser, address: defaultAddress || null });
   });
 
+  app.post("/api/auth/motoboy-login", async (req, res) => {
+    const { whatsapp, password } = req.body;
+    
+    if (!password || !/^\d{6}$/.test(password)) {
+      return res.status(400).json({ success: false, error: "Senha deve ter exatamente 6 digitos" });
+    }
+    
+    const motoboy = await storage.getMotoboyByWhatsapp(whatsapp);
+    if (!motoboy) {
+      return res.status(401).json({ success: false, error: "Motoboy nao encontrado" });
+    }
+    
+    if (!motoboy.isActive) {
+      return res.status(403).json({ success: false, error: "Motoboy desativado" });
+    }
+    
+    const user = await storage.getUserByWhatsapp(whatsapp);
+    if (!user) {
+      return res.status(401).json({ success: false, error: "Usuario do motoboy nao encontrado" });
+    }
+    
+    if (!user.password) {
+      return res.status(401).json({ success: false, error: "Senha nao cadastrada pelo administrador" });
+    }
+    
+    const isValid = await bcrypt.compare(password, user.password);
+    if (!isValid) {
+      return res.status(401).json({ success: false, error: "Senha incorreta" });
+    }
+    
+    const { password: _, ...safeUser } = user;
+    res.json({ 
+      success: true, 
+      user: { ...safeUser, role: 'motoboy' }, 
+      role: 'motoboy',
+      motoboy: motoboy
+    });
+  });
+
   app.post("/api/auth/register", async (req, res) => {
     const { user: userData, address: addressData } = req.body;
     
     if (!userData.password || !/^\d{6}$/.test(userData.password)) {
       return res.status(400).json({ error: "Senha deve ter exatamente 6 digitos" });
+    }
+    
+    const motoboy = await storage.getMotoboyByWhatsapp(userData.whatsapp);
+    if (motoboy) {
+      return res.status(400).json({ error: "Este numero pertence a um motoboy. Use o login de funcionarios." });
     }
     
     const existingUser = await storage.getUserByWhatsapp(userData.whatsapp);

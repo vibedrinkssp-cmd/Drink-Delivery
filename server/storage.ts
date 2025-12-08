@@ -63,6 +63,7 @@ export interface IStorage {
 
   getMotoboys(): Promise<Motoboy[]>;
   getMotoboy(id: string): Promise<Motoboy | undefined>;
+  getMotoboyByWhatsapp(whatsapp: string): Promise<Motoboy | undefined>;
   createMotoboy(motoboy: InsertMotoboy): Promise<Motoboy>;
   updateMotoboy(id: string, motoboy: Partial<InsertMotoboy>): Promise<Motoboy | undefined>;
   deleteMotoboy(id: string): Promise<boolean>;
@@ -315,6 +316,11 @@ export class DatabaseStorage implements IStorage {
 
   async getMotoboy(id: string): Promise<Motoboy | undefined> {
     const [motoboy] = await db.select().from(motoboys).where(eq(motoboys.id, id));
+    return motoboy || undefined;
+  }
+
+  async getMotoboyByWhatsapp(whatsapp: string): Promise<Motoboy | undefined> {
+    const [motoboy] = await db.select().from(motoboys).where(eq(motoboys.whatsapp, whatsapp));
     return motoboy || undefined;
   }
 
