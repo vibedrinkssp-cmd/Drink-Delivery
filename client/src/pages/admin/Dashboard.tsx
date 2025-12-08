@@ -1078,11 +1078,11 @@ function ProdutosTab() {
               Novo Produto
             </Button>
           </DialogTrigger>
-          <DialogContent className="max-w-md">
+          <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>{editingProduct ? 'Editar Produto' : 'Novo Produto'}</DialogTitle>
             </DialogHeader>
-            <form onSubmit={handleSubmit} className="space-y-4">
+            <form onSubmit={handleSubmit} className="space-y-3">
               <div>
                 <Label htmlFor="name">Nome</Label>
                 <Input id="name" name="name" defaultValue={editingProduct?.name} required data-testid="input-product-name" />
