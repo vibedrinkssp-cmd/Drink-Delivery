@@ -39,7 +39,9 @@ import {
   Wifi,
   WifiOff,
   Search,
-  GripVertical
+  GripVertical,
+  FileText,
+  Download
 } from 'lucide-react';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
@@ -1841,8 +1843,13 @@ interface MotoboyDetails extends Motoboy {
 function MotoboysTab() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isDetailDialogOpen, setIsDetailDialogOpen] = useState(false);
+  const [isReportDialogOpen, setIsReportDialogOpen] = useState(false);
   const [editingMotoboy, setEditingMotoboy] = useState<Motoboy | null>(null);
   const [viewingMotoboyId, setViewingMotoboyId] = useState<string | null>(null);
+  const [reportMotoboyId, setReportMotoboyId] = useState<string | null>(null);
+  const [reportStartDate, setReportStartDate] = useState<string>('');
+  const [reportEndDate, setReportEndDate] = useState<string>('');
+  const [reportSearchTerm, setReportSearchTerm] = useState<string>('');
   const { toast } = useToast();
 
   const { data: motoboys = [] } = useQuery<Motoboy[]>({
@@ -1855,6 +1862,20 @@ function MotoboysTab() {
     queryFn: async () => {
       const res = await fetch(`/api/motoboys/${viewingMotoboyId}/details`);
       if (!res.ok) throw new Error('Failed to fetch motoboy details');
+      return res.json();
+    }
+  });
+
+  const { data: motoboyOrders = [], isLoading: isLoadingOrders } = useQuery<Order[]>({
+    queryKey: ['/api/motoboys', reportMotoboyId, 'orders', reportStartDate, reportEndDate],
+    enabled: !!reportMotoboyId && isReportDialogOpen,
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (reportStartDate) params.append('startDate', reportStartDate);
+      if (reportEndDate) params.append('endDate', reportEndDate);
+      const url = `/api/motoboys/${reportMotoboyId}/orders${params.toString() ? '?' + params.toString() : ''}`;
+      const res = await fetch(url);
+      if (!res.ok) throw new Error('Failed to fetch motoboy orders');
       return res.json();
     }
   });
@@ -1954,6 +1975,65 @@ function MotoboysTab() {
   const handleViewDetails = (motoboyId: string) => {
     setViewingMotoboyId(motoboyId);
     setIsDetailDialogOpen(true);
+  };
+
+  const handleOpenReport = (motoboyId: string) => {
+    setReportMotoboyId(motoboyId);
+    setReportStartDate('');
+    setReportEndDate('');
+    setReportSearchTerm('');
+    setIsReportDialogOpen(true);
+  };
+
+  const reportMotoboy = motoboys.find(m => m.id === reportMotoboyId);
+  
+  const filteredReportOrders = motoboyOrders.filter(order => {
+    if (!reportSearchTerm) return true;
+    const searchLower = reportSearchTerm.toLowerCase();
+    return (
+      order.id.toLowerCase().includes(searchLower) ||
+      (order.customerName && order.customerName.toLowerCase().includes(searchLower)) ||
+      (order.deliveryAddress && order.deliveryAddress.toLowerCase().includes(searchLower))
+    );
+  });
+
+  const reportTotals = filteredReportOrders.reduce((acc, order) => {
+    acc.count += 1;
+    acc.total += Number(order.total);
+    acc.deliveryFees += Number(order.deliveryFee);
+    return acc;
+  }, { count: 0, total: 0, deliveryFees: 0 });
+
+  const handleExportReport = () => {
+    if (!reportMotoboy) return;
+    const csvData = [
+      ['Relatorio de Entregas - ' + reportMotoboy.name],
+      ['Periodo: ' + (reportStartDate || 'Inicio') + ' ate ' + (reportEndDate || 'Hoje')],
+      [''],
+      ['Resumo'],
+      ['Total de Entregas', reportTotals.count.toString()],
+      ['Valor Total', formatCurrency(reportTotals.total)],
+      ['Taxas de Entrega', formatCurrency(reportTotals.deliveryFees)],
+      [''],
+      ['Pedidos'],
+      ['ID', 'Data', 'Cliente', 'Endereco', 'Valor', 'Taxa Entrega', 'Status'],
+      ...filteredReportOrders.map(order => [
+        order.id,
+        formatDate(order.createdAt),
+        order.customerName || '-',
+        order.deliveryAddress || '-',
+        formatCurrency(order.total),
+        formatCurrency(order.deliveryFee),
+        ORDER_STATUS_LABELS[order.status as OrderStatus]
+      ])
+    ];
+    const csvContent = csvData.map(row => row.join(';')).join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `relatorio_${reportMotoboy.name.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.csv`;
+    link.click();
+    toast({ title: 'Relatorio exportado!' });
   };
 
   return (
@@ -2131,6 +2211,127 @@ function MotoboysTab() {
         </DialogContent>
       </Dialog>
 
+      {/* Report Dialog */}
+      <Dialog open={isReportDialogOpen} onOpenChange={(open) => {
+        setIsReportDialogOpen(open);
+        if (!open) setReportMotoboyId(null);
+      }}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FileText className="w-5 h-5" />
+              Relatorio de Entregas - {reportMotoboy?.name}
+            </DialogTitle>
+          </DialogHeader>
+          
+          <div className="space-y-4 flex-1 overflow-hidden flex flex-col">
+            {/* Filters */}
+            <div className="flex flex-wrap items-end gap-3">
+              <div>
+                <Label htmlFor="reportStartDate" className="text-xs">Data Inicio</Label>
+                <Input
+                  id="reportStartDate"
+                  type="date"
+                  value={reportStartDate}
+                  onChange={(e) => setReportStartDate(e.target.value)}
+                  className="w-40"
+                  data-testid="input-report-start-date"
+                />
+              </div>
+              <div>
+                <Label htmlFor="reportEndDate" className="text-xs">Data Fim</Label>
+                <Input
+                  id="reportEndDate"
+                  type="date"
+                  value={reportEndDate}
+                  onChange={(e) => setReportEndDate(e.target.value)}
+                  className="w-40"
+                  data-testid="input-report-end-date"
+                />
+              </div>
+              <div className="flex-1">
+                <Label htmlFor="reportSearch" className="text-xs">Buscar</Label>
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    id="reportSearch"
+                    placeholder="Buscar por ID, cliente ou endereco..."
+                    value={reportSearchTerm}
+                    onChange={(e) => setReportSearchTerm(e.target.value)}
+                    className="pl-9"
+                    data-testid="input-report-search"
+                  />
+                </div>
+              </div>
+              <Button onClick={handleExportReport} variant="outline" data-testid="button-export-report">
+                <Download className="w-4 h-4 mr-2" />
+                Exportar
+              </Button>
+            </div>
+
+            {/* Summary */}
+            <div className="grid grid-cols-3 gap-4">
+              <Card data-testid="card-report-deliveries">
+                <CardContent className="p-4 text-center">
+                  <p className="text-2xl font-bold text-primary" data-testid="text-report-count">{reportTotals.count}</p>
+                  <p className="text-sm text-muted-foreground">Entregas</p>
+                </CardContent>
+              </Card>
+              <Card data-testid="card-report-total">
+                <CardContent className="p-4 text-center">
+                  <p className="text-2xl font-bold text-primary" data-testid="text-report-total">{formatCurrency(reportTotals.total)}</p>
+                  <p className="text-sm text-muted-foreground">Valor Total</p>
+                </CardContent>
+              </Card>
+              <Card data-testid="card-report-fees">
+                <CardContent className="p-4 text-center">
+                  <p className="text-2xl font-bold text-primary" data-testid="text-report-fees">{formatCurrency(reportTotals.deliveryFees)}</p>
+                  <p className="text-sm text-muted-foreground">Taxas de Entrega</p>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Orders List */}
+            <div className="flex-1 overflow-auto min-h-0">
+              {isLoadingOrders ? (
+                <div className="py-8 text-center text-muted-foreground">
+                  Carregando pedidos...
+                </div>
+              ) : filteredReportOrders.length === 0 ? (
+                <div className="py-8 text-center text-muted-foreground">
+                  Nenhum pedido encontrado para este periodo
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {filteredReportOrders.map(order => (
+                    <Card key={order.id} className="hover-elevate" data-testid={`card-report-order-${order.id}`}>
+                      <CardContent className="p-3">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-mono text-sm">#{order.id.slice(-6)}</span>
+                              <Badge className={order.status === 'delivered' ? 'bg-emerald-500/20 text-emerald-300' : 'bg-yellow-500/20 text-yellow-300'}>
+                                {ORDER_STATUS_LABELS[order.status as OrderStatus]}
+                              </Badge>
+                            </div>
+                            <p className="text-sm truncate">{order.customerName || '-'}</p>
+                            <p className="text-xs text-muted-foreground truncate">{order.deliveryAddress || '-'}</p>
+                          </div>
+                          <div className="text-right">
+                            <p className="font-semibold">{formatCurrency(order.total)}</p>
+                            <p className="text-xs text-muted-foreground">{formatDate(order.createdAt)}</p>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         {motoboys.map(motoboy => (
           <Card key={motoboy.id} data-testid={`card-motoboy-${motoboy.id}`}>
@@ -2171,6 +2372,15 @@ function MotoboysTab() {
                 >
                   <Edit2 className="w-4 h-4 mr-2" />
                   Editar
+                </Button>
+                <Button 
+                  size="icon" 
+                  variant="ghost"
+                  onClick={() => handleOpenReport(motoboy.id)}
+                  data-testid={`button-report-motoboy-${motoboy.id}`}
+                  title="Relatorio de Entregas"
+                >
+                  <FileText className="w-4 h-4" />
                 </Button>
                 <Button 
                   size="icon" 

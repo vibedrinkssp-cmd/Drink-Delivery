@@ -641,6 +641,30 @@ export async function registerRoutes(
     });
   });
 
+  // Get orders by motoboy for reports (admin)
+  app.get("/api/motoboys/:id/orders", async (req, res) => {
+    const { id } = req.params;
+    const { startDate, endDate } = req.query;
+    
+    const motoboy = await storage.getMotoboy(id);
+    if (!motoboy) {
+      return res.status(404).json({ error: "Motoboy not found" });
+    }
+    
+    let start: Date | undefined;
+    let end: Date | undefined;
+    
+    if (startDate && typeof startDate === 'string') {
+      start = new Date(startDate);
+    }
+    if (endDate && typeof endDate === 'string') {
+      end = new Date(endDate);
+    }
+    
+    const orders = await storage.getOrdersByMotoboy(id, start, end);
+    res.json(orders);
+  });
+
   app.post("/api/motoboys", async (req, res) => {
     const { name, whatsapp, photoUrl, isActive, password } = req.body;
     

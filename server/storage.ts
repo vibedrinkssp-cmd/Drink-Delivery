@@ -1,5 +1,5 @@
 import { randomUUID } from "crypto";
-import { eq, desc, inArray } from "drizzle-orm";
+import { eq, desc, inArray, and, gte, lte } from "drizzle-orm";
 import { db } from "./db";
 import { 
   users, addresses, categories, products, orders, orderItems, 
@@ -69,6 +69,7 @@ export interface IStorage {
   getMotoboys(): Promise<Motoboy[]>;
   getMotoboy(id: string): Promise<Motoboy | undefined>;
   getMotoboyByWhatsapp(whatsapp: string): Promise<Motoboy | undefined>;
+  getOrdersByMotoboy(motoboyId: string, startDate?: Date, endDate?: Date): Promise<Order[]>;
   createMotoboy(motoboy: InsertMotoboy): Promise<Motoboy>;
   updateMotoboy(id: string, motoboy: Partial<InsertMotoboy>): Promise<Motoboy | undefined>;
   deleteMotoboy(id: string): Promise<boolean>;
@@ -403,6 +404,23 @@ export class DatabaseStorage implements IStorage {
   async getMotoboyByWhatsapp(whatsapp: string): Promise<Motoboy | undefined> {
     const [motoboy] = await db.select().from(motoboys).where(eq(motoboys.whatsapp, whatsapp));
     return motoboy || undefined;
+  }
+
+  async getOrdersByMotoboy(motoboyId: string, startDate?: Date, endDate?: Date): Promise<Order[]> {
+    const conditions = [eq(orders.motoboyId, motoboyId)];
+    
+    if (startDate) {
+      conditions.push(gte(orders.createdAt, startDate));
+    }
+    if (endDate) {
+      const endOfDay = new Date(endDate);
+      endOfDay.setHours(23, 59, 59, 999);
+      conditions.push(lte(orders.createdAt, endOfDay));
+    }
+    
+    return await db.select().from(orders)
+      .where(and(...conditions))
+      .orderBy(desc(orders.createdAt));
   }
 
   async createMotoboy(insertMotoboy: InsertMotoboy): Promise<Motoboy> {
