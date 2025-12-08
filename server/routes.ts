@@ -392,6 +392,23 @@ export async function registerRoutes(
     res.json(orders);
   });
 
+  app.get("/api/order-items", async (req, res) => {
+    const orderIdsParam = req.query.orderIds;
+    if (orderIdsParam) {
+      const orderIds = typeof orderIdsParam === 'string' 
+        ? orderIdsParam.split(',').map(id => id.trim()).filter(id => id)
+        : Array.isArray(orderIdsParam) 
+          ? (orderIdsParam as string[]).map(id => id.trim()).filter(id => id)
+          : [];
+      if (orderIds.length === 0) {
+        return res.json([]);
+      }
+      const items = await storage.getOrderItemsByOrderIds(orderIds);
+      return res.json(items);
+    }
+    return res.json([]);
+  });
+
   app.get("/api/orders/:id", async (req, res) => {
     const order = await storage.getOrder(req.params.id);
     if (!order) return res.status(404).json({ error: "Order not found" });

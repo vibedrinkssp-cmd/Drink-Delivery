@@ -1,5 +1,5 @@
 import { randomUUID } from "crypto";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, inArray } from "drizzle-orm";
 import { db } from "./db";
 import { 
   users, addresses, categories, products, orders, orderItems, 
@@ -53,6 +53,8 @@ export interface IStorage {
   updateOrder(id: string, order: Partial<Order>): Promise<Order | undefined>;
 
   getOrderItems(orderId: string): Promise<OrderItem[]>;
+  getAllOrderItems(): Promise<OrderItem[]>;
+  getOrderItemsByOrderIds(orderIds: string[]): Promise<OrderItem[]>;
   createOrderItem(item: InsertOrderItem): Promise<OrderItem>;
 
   getBanners(): Promise<Banner[]>;
@@ -268,6 +270,15 @@ export class DatabaseStorage implements IStorage {
 
   async getOrderItems(orderId: string): Promise<OrderItem[]> {
     return await db.select().from(orderItems).where(eq(orderItems.orderId, orderId));
+  }
+
+  async getAllOrderItems(): Promise<OrderItem[]> {
+    return await db.select().from(orderItems);
+  }
+
+  async getOrderItemsByOrderIds(orderIds: string[]): Promise<OrderItem[]> {
+    if (orderIds.length === 0) return [];
+    return await db.select().from(orderItems).where(inArray(orderItems.orderId, orderIds));
   }
 
   async createOrderItem(insertItem: InsertOrderItem): Promise<OrderItem> {

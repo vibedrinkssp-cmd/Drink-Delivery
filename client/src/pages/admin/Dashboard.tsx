@@ -39,6 +39,7 @@ import {
   Wifi,
   WifiOff
 } from 'lucide-react';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { useRef} from 'react';
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
@@ -354,72 +355,414 @@ function DeliveryTab() {
 }
 
 function FinanceiroTab() {
+  const [dateFilter, setDateFilter] = useState<'today' | 'week' | 'month' | 'custom'>('month');
+  const [customStartDate, setCustomStartDate] = useState<string>('');
+  const [customEndDate, setCustomEndDate] = useState<string>('');
+  
   const { data: orders = [] } = useQuery<Order[]>({
     queryKey: ['/api/orders'],
   });
 
+  const { data: products = [] } = useQuery<Product[]>({
+    queryKey: ['/api/products'],
+  });
+
   const deliveredOrders = orders.filter(o => o.status === 'delivered');
   
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const getDateRange = (): { start: Date; end: Date } => {
+    const end = new Date();
+    end.setHours(23, 59, 59, 999);
+    let start = new Date();
+    
+    switch (dateFilter) {
+      case 'today':
+        start.setHours(0, 0, 0, 0);
+        break;
+      case 'week':
+        start.setDate(start.getDate() - 7);
+        start.setHours(0, 0, 0, 0);
+        break;
+      case 'month':
+        start.setMonth(start.getMonth() - 1);
+        start.setHours(0, 0, 0, 0);
+        break;
+      case 'custom':
+        if (customStartDate) {
+          start = new Date(customStartDate);
+          start.setHours(0, 0, 0, 0);
+        }
+        if (customEndDate) {
+          const customEnd = new Date(customEndDate);
+          customEnd.setHours(23, 59, 59, 999);
+          return { start, end: customEnd };
+        }
+        break;
+    }
+    return { start, end };
+  };
+
+  const { start: filterStart, end: filterEnd } = getDateRange();
   
-  const todayOrders = deliveredOrders.filter(o => {
+  const filteredOrders = deliveredOrders.filter(o => {
     const orderDate = new Date(o.createdAt!);
-    return orderDate >= today;
+    return orderDate >= filterStart && orderDate <= filterEnd;
   });
 
-  const weekAgo = new Date();
-  weekAgo.setDate(weekAgo.getDate() - 7);
+  const filteredOrderIds = filteredOrders.map(o => o.id).join(',');
   
-  const weekOrders = deliveredOrders.filter(o => {
-    const orderDate = new Date(o.createdAt!);
-    return orderDate >= weekAgo;
+  const { data: orderItems = [] } = useQuery<(typeof import('@shared/schema').orderItems.$inferSelect)[]>({
+    queryKey: ['/api/order-items', filteredOrderIds],
+    queryFn: async () => {
+      if (!filteredOrderIds) return [];
+      const res = await fetch(`/api/order-items?orderIds=${encodeURIComponent(filteredOrderIds)}`);
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: filteredOrders.length > 0,
   });
 
-  const monthAgo = new Date();
-  monthAgo.setMonth(monthAgo.getMonth() - 1);
-  
-  const monthOrders = deliveredOrders.filter(o => {
-    const orderDate = new Date(o.createdAt!);
-    return orderDate >= monthAgo;
-  });
+  const totalRevenue = filteredOrders.reduce((sum, o) => sum + Number(o.total), 0);
+  const totalDeliveryFees = filteredOrders.reduce((sum, o) => sum + Number(o.deliveryFee), 0);
+  const totalSubtotal = filteredOrders.reduce((sum, o) => sum + Number(o.subtotal), 0);
+  const totalDiscount = filteredOrders.reduce((sum, o) => sum + Number(o.discount || 0), 0);
+  const avgTicket = filteredOrders.length > 0 ? totalRevenue / filteredOrders.length : 0;
 
-  const totalToday = todayOrders.reduce((sum, o) => sum + Number(o.total), 0);
-  const totalWeek = weekOrders.reduce((sum, o) => sum + Number(o.total), 0);
-  const totalMonth = monthOrders.reduce((sum, o) => sum + Number(o.total), 0);
-  const totalAll = deliveredOrders.reduce((sum, o) => sum + Number(o.total), 0);
+  const paymentBreakdown = filteredOrders.reduce((acc, order) => {
+    const method = order.paymentMethod as PaymentMethod;
+    acc[method] = (acc[method] || 0) + Number(order.total);
+    return acc;
+  }, {} as Record<PaymentMethod, number>);
+
+  const paymentChartData = Object.entries(paymentBreakdown).map(([method, value]) => ({
+    name: PAYMENT_METHOD_LABELS[method as PaymentMethod] || method,
+    value: Number(value.toFixed(2)),
+  }));
+
+  const orderTypeBreakdown = filteredOrders.reduce((acc, order) => {
+    const type = order.orderType as OrderType;
+    acc[type] = (acc[type] || 0) + Number(order.total);
+    return acc;
+  }, {} as Record<OrderType, number>);
+
+  const orderTypeChartData = Object.entries(orderTypeBreakdown).map(([type, value]) => ({
+    name: ORDER_TYPE_LABELS[type as OrderType] || type,
+    value: Number(value.toFixed(2)),
+  }));
+
+  const revenueByDay = filteredOrders.reduce((acc, order) => {
+    const date = new Date(order.createdAt!).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+    acc[date] = (acc[date] || 0) + Number(order.total);
+    return acc;
+  }, {} as Record<string, number>);
+
+  const revenueChartData = Object.entries(revenueByDay)
+    .map(([date, revenue]) => ({ date, revenue: Number(revenue.toFixed(2)) }))
+    .sort((a, b) => {
+      const [dayA, monthA] = a.date.split('/').map(Number);
+      const [dayB, monthB] = b.date.split('/').map(Number);
+      if (monthA !== monthB) return monthA - monthB;
+      return dayA - dayB;
+    });
+
+  const productSales = orderItems
+    .reduce((acc, item) => {
+      const key = item.productId;
+      if (!acc[key]) {
+        acc[key] = { productId: key, productName: item.productName, quantity: 0, revenue: 0 };
+      }
+      acc[key].quantity += item.quantity;
+      acc[key].revenue += Number(item.totalPrice);
+      return acc;
+    }, {} as Record<string, { productId: string; productName: string; quantity: number; revenue: number }>);
+
+  const allProductSales = Object.values(productSales);
+  
+  const topProducts = allProductSales
+    .sort((a, b) => b.revenue - a.revenue)
+    .slice(0, 10);
+
+  const estimatedCost = allProductSales.reduce((sum, item) => {
+    const product = products.find(p => p.id === item.productId);
+    if (product) {
+      return sum + (Number(product.costPrice) * item.quantity);
+    }
+    return sum;
+  }, 0);
+
+  const estimatedProfit = totalSubtotal - estimatedCost;
+  const profitMargin = totalSubtotal > 0 ? (estimatedProfit / totalSubtotal) * 100 : 0;
+
+  const CHART_COLORS = ['#FFD700', '#FFC400', '#DAA520', '#B8860B', '#CD853F'];
+
+  const handleExport = () => {
+    const csvData = [
+      ['Relatorio Financeiro - Vibe Drinks'],
+      [`Periodo: ${filterStart.toLocaleDateString('pt-BR')} - ${filterEnd.toLocaleDateString('pt-BR')}`],
+      [''],
+      ['Resumo Geral'],
+      ['Total de Pedidos', filteredOrders.length.toString()],
+      ['Receita Total', formatCurrency(totalRevenue)],
+      ['Subtotal Produtos', formatCurrency(totalSubtotal)],
+      ['Taxa de Entrega', formatCurrency(totalDeliveryFees)],
+      ['Descontos', formatCurrency(totalDiscount)],
+      ['Ticket Medio', formatCurrency(avgTicket)],
+      ['Lucro Estimado', formatCurrency(estimatedProfit)],
+      [`Margem de Lucro`, `${profitMargin.toFixed(1)}%`],
+      [''],
+      ['Vendas por Forma de Pagamento'],
+      ...paymentChartData.map(p => [p.name, formatCurrency(p.value)]),
+      [''],
+      ['Vendas por Tipo de Pedido'],
+      ...orderTypeChartData.map(o => [o.name, formatCurrency(o.value)]),
+      [''],
+      ['Top 10 Produtos'],
+      ['Produto', 'Quantidade', 'Receita'],
+      ...topProducts.map(p => [p.productName, p.quantity.toString(), formatCurrency(p.revenue)]),
+    ];
+
+    const csvContent = csvData.map(row => row.join(',')).join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `relatorio-financeiro-${new Date().toISOString().split('T')[0]}.csv`;
+    link.click();
+  };
 
   return (
     <div className="space-y-6">
-      <h2 className="font-serif text-3xl text-primary">Financeiro</h2>
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <h2 className="font-serif text-3xl text-primary">Financeiro</h2>
+        <Button onClick={handleExport} variant="outline" data-testid="button-export-report">
+          <DollarSign className="w-4 h-4 mr-2" />
+          Exportar CSV
+        </Button>
+      </div>
+
+      <Card data-testid="card-date-filter">
+        <CardContent className="p-4">
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="text-sm text-muted-foreground">Periodo:</span>
+            <div className="flex flex-wrap gap-2">
+              <Button 
+                size="sm" 
+                variant={dateFilter === 'today' ? 'default' : 'outline'}
+                onClick={() => setDateFilter('today')}
+                data-testid="button-filter-today"
+              >
+                Hoje
+              </Button>
+              <Button 
+                size="sm" 
+                variant={dateFilter === 'week' ? 'default' : 'outline'}
+                onClick={() => setDateFilter('week')}
+                data-testid="button-filter-week"
+              >
+                7 dias
+              </Button>
+              <Button 
+                size="sm" 
+                variant={dateFilter === 'month' ? 'default' : 'outline'}
+                onClick={() => setDateFilter('month')}
+                data-testid="button-filter-month"
+              >
+                30 dias
+              </Button>
+              <Button 
+                size="sm" 
+                variant={dateFilter === 'custom' ? 'default' : 'outline'}
+                onClick={() => setDateFilter('custom')}
+                data-testid="button-filter-custom"
+              >
+                <Calendar className="w-4 h-4 mr-1" />
+                Personalizado
+              </Button>
+            </div>
+            {dateFilter === 'custom' && (
+              <div className="flex flex-wrap items-center gap-2">
+                <Input
+                  type="date"
+                  value={customStartDate}
+                  onChange={(e) => setCustomStartDate(e.target.value)}
+                  className="w-40"
+                  data-testid="input-start-date"
+                />
+                <span className="text-muted-foreground">ate</span>
+                <Input
+                  type="date"
+                  value={customEndDate}
+                  onChange={(e) => setCustomEndDate(e.target.value)}
+                  className="w-40"
+                  data-testid="input-end-date"
+                />
+              </div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card data-testid="card-today-total">
+        <Card data-testid="card-total-revenue">
           <CardContent className="p-6">
-            <div className="text-sm text-muted-foreground mb-1">Hoje</div>
-            <div className="text-2xl font-bold text-primary">{formatCurrency(totalToday)}</div>
-            <div className="text-xs text-muted-foreground mt-1">{todayOrders.length} pedidos</div>
+            <div className="text-sm text-muted-foreground mb-1">Receita Total</div>
+            <div className="text-2xl font-bold text-primary">{formatCurrency(totalRevenue)}</div>
+            <div className="text-xs text-muted-foreground mt-1">{filteredOrders.length} pedidos</div>
           </CardContent>
         </Card>
-        <Card data-testid="card-week-total">
+        <Card data-testid="card-avg-ticket">
           <CardContent className="p-6">
-            <div className="text-sm text-muted-foreground mb-1">Semana</div>
-            <div className="text-2xl font-bold text-primary">{formatCurrency(totalWeek)}</div>
-            <div className="text-xs text-muted-foreground mt-1">{weekOrders.length} pedidos</div>
+            <div className="text-sm text-muted-foreground mb-1">Ticket Medio</div>
+            <div className="text-2xl font-bold text-primary">{formatCurrency(avgTicket)}</div>
+            <div className="text-xs text-muted-foreground mt-1">por pedido</div>
           </CardContent>
         </Card>
-        <Card data-testid="card-month-total">
+        <Card data-testid="card-profit">
           <CardContent className="p-6">
-            <div className="text-sm text-muted-foreground mb-1">Mes</div>
-            <div className="text-2xl font-bold text-primary">{formatCurrency(totalMonth)}</div>
-            <div className="text-xs text-muted-foreground mt-1">{monthOrders.length} pedidos</div>
+            <div className="text-sm text-muted-foreground mb-1">Lucro Estimado</div>
+            <div className="text-2xl font-bold text-green-400">{formatCurrency(estimatedProfit)}</div>
+            <div className="text-xs text-muted-foreground mt-1">margem: {profitMargin.toFixed(1)}%</div>
           </CardContent>
         </Card>
-        <Card data-testid="card-total">
+        <Card data-testid="card-delivery-fees">
           <CardContent className="p-6">
-            <div className="text-sm text-muted-foreground mb-1">Total</div>
-            <div className="text-2xl font-bold text-primary">{formatCurrency(totalAll)}</div>
-            <div className="text-xs text-muted-foreground mt-1">{deliveredOrders.length} pedidos</div>
+            <div className="text-sm text-muted-foreground mb-1">Taxa de Entrega</div>
+            <div className="text-2xl font-bold text-primary">{formatCurrency(totalDeliveryFees)}</div>
+            <div className="text-xs text-muted-foreground mt-1">descontos: {formatCurrency(totalDiscount)}</div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="grid gap-6 lg:grid-cols-2">
+        <Card data-testid="card-revenue-chart">
+          <CardHeader>
+            <CardTitle className="text-lg">Receita por Dia</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {revenueChartData.length > 0 ? (
+              <div className="h-64">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={revenueChartData}>
+                    <XAxis dataKey="date" tick={{ fill: '#888', fontSize: 12 }} />
+                    <YAxis tick={{ fill: '#888', fontSize: 12 }} tickFormatter={(v) => `R$${v}`} />
+                    <Tooltip 
+                      formatter={(value: number) => [formatCurrency(value), 'Receita']}
+                      contentStyle={{ backgroundColor: '#1a1a1a', border: '1px solid #333' }}
+                      labelStyle={{ color: '#fff' }}
+                    />
+                    <Bar dataKey="revenue" fill="#FFD700" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            ) : (
+              <div className="h-64 flex items-center justify-center text-muted-foreground">
+                Sem dados para o periodo selecionado
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card data-testid="card-payment-chart">
+          <CardHeader>
+            <CardTitle className="text-lg">Formas de Pagamento</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {paymentChartData.length > 0 ? (
+              <div className="h-64">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={paymentChartData}
+                      cx="50%"
+                      cy="50%"
+                      outerRadius={80}
+                      dataKey="value"
+                      label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                      labelLine={false}
+                    >
+                      {paymentChartData.map((_, index) => (
+                        <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip 
+                      formatter={(value: number) => [formatCurrency(value), 'Total']}
+                      contentStyle={{ backgroundColor: '#1a1a1a', border: '1px solid #333' }}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+            ) : (
+              <div className="h-64 flex items-center justify-center text-muted-foreground">
+                Sem dados para o periodo selecionado
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card data-testid="card-order-type-chart">
+          <CardHeader>
+            <CardTitle className="text-lg">Tipo de Pedido</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {orderTypeChartData.length > 0 ? (
+              <div className="h-64">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={orderTypeChartData}
+                      cx="50%"
+                      cy="50%"
+                      outerRadius={80}
+                      dataKey="value"
+                      label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                      labelLine={false}
+                    >
+                      {orderTypeChartData.map((_, index) => (
+                        <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip 
+                      formatter={(value: number) => [formatCurrency(value), 'Total']}
+                      contentStyle={{ backgroundColor: '#1a1a1a', border: '1px solid #333' }}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+            ) : (
+              <div className="h-64 flex items-center justify-center text-muted-foreground">
+                Sem dados para o periodo selecionado
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card data-testid="card-top-products">
+          <CardHeader>
+            <CardTitle className="text-lg">Top 10 Produtos</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {topProducts.length > 0 ? (
+              <div className="space-y-3 max-h-64 overflow-y-auto">
+                {topProducts.map((product, index) => (
+                  <div 
+                    key={product.productId} 
+                    className="flex items-center justify-between py-2 border-b border-border/20 last:border-0"
+                    data-testid={`row-top-product-${index}`}
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <span className="text-xs text-muted-foreground w-5">#{index + 1}</span>
+                      <span className="truncate font-medium">{product.productName}</span>
+                    </div>
+                    <div className="flex items-center gap-4 flex-shrink-0">
+                      <Badge variant="secondary" className="text-xs">{product.quantity}x</Badge>
+                      <span className="font-bold text-primary">{formatCurrency(product.revenue)}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="h-64 flex items-center justify-center text-muted-foreground">
+                Sem dados para o periodo selecionado
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -430,13 +773,16 @@ function FinanceiroTab() {
         </CardHeader>
         <CardContent>
           <div className="space-y-2">
-            {deliveredOrders.slice(0, 10).map(order => (
+            {filteredOrders.slice(0, 15).map(order => (
               <div key={order.id} className="flex flex-wrap items-center justify-between gap-2 py-2 border-b border-border/20 last:border-0">
-                <div>
+                <div className="flex flex-wrap items-center gap-2">
                   <span className="font-medium">Pedido #{order.id.slice(0, 8)}</span>
-                  <span className="text-muted-foreground text-sm ml-2">
+                  <Badge variant="outline" className="text-xs">
                     {PAYMENT_METHOD_LABELS[order.paymentMethod as PaymentMethod]}
-                  </span>
+                  </Badge>
+                  <Badge variant="secondary" className="text-xs">
+                    {ORDER_TYPE_LABELS[order.orderType as OrderType]}
+                  </Badge>
                 </div>
                 <div className="flex items-center gap-4">
                   <span className="text-muted-foreground text-sm">{formatDate(order.createdAt)}</span>
@@ -444,6 +790,11 @@ function FinanceiroTab() {
                 </div>
               </div>
             ))}
+            {filteredOrders.length === 0 && (
+              <div className="py-8 text-center text-muted-foreground">
+                Nenhuma venda no periodo selecionado
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>
