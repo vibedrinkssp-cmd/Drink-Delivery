@@ -25,6 +25,7 @@ export interface IStorage {
   getUserByWhatsapp(whatsapp: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
   updateUser(id: string, user: Partial<InsertUser>): Promise<User | undefined>;
+  deleteUser(id: string): Promise<boolean>;
 
   getAddresses(userId: string): Promise<Address[]>;
   getAddress(id: string): Promise<Address | undefined>;
@@ -108,6 +109,17 @@ export class DatabaseStorage implements IStorage {
   async updateUser(id: string, updates: Partial<InsertUser>): Promise<User | undefined> {
     const [user] = await db.update(users).set(updates).where(eq(users.id, id)).returning();
     return user || undefined;
+  }
+
+  async deleteUser(id: string): Promise<boolean> {
+    const userOrders = await db.select().from(orders).where(eq(orders.userId, id));
+    for (const order of userOrders) {
+      await db.delete(orderItems).where(eq(orderItems.orderId, order.id));
+    }
+    await db.delete(orders).where(eq(orders.userId, id));
+    await db.delete(addresses).where(eq(addresses.userId, id));
+    await db.delete(users).where(eq(users.id, id));
+    return true;
   }
 
   async getAddresses(userId: string): Promise<Address[]> {

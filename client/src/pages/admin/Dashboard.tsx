@@ -964,6 +964,19 @@ function ClientesTab() {
     },
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: async (userId: string) => {
+      return apiRequest('DELETE', `/api/users/${userId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/users'] });
+      toast({ title: 'Cliente excluido!' });
+    },
+    onError: () => {
+      toast({ title: 'Erro ao excluir cliente', variant: 'destructive' });
+    },
+  });
+
   const customers = users.filter(u => u.role === 'customer');
 
   return (
@@ -995,14 +1008,30 @@ function ClientesTab() {
                       </Badge>
                     </td>
                     <td className="p-4 text-right">
-                      <Button 
-                        size="sm" 
-                        variant={user.isBlocked ? 'default' : 'outline'}
-                        onClick={() => toggleBlockMutation.mutate({ userId: user.id, isBlocked: !user.isBlocked })}
-                        data-testid={`button-toggle-block-${user.id}`}
-                      >
-                        {user.isBlocked ? 'Desbloquear' : 'Bloquear'}
-                      </Button>
+                      <div className="flex items-center justify-end gap-2">
+                        <Button 
+                          size="sm" 
+                          variant={user.isBlocked ? 'default' : 'outline'}
+                          onClick={() => toggleBlockMutation.mutate({ userId: user.id, isBlocked: !user.isBlocked })}
+                          data-testid={`button-toggle-block-${user.id}`}
+                        >
+                          {user.isBlocked ? 'Desbloquear' : 'Bloquear'}
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="text-muted-foreground/50 hover:text-destructive"
+                          onClick={() => {
+                            if (confirm('Tem certeza que deseja excluir este cliente? Esta acao nao pode ser desfeita.')) {
+                              deleteMutation.mutate(user.id);
+                            }
+                          }}
+                          disabled={deleteMutation.isPending}
+                          data-testid={`button-delete-user-${user.id}`}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
                     </td>
                   </tr>
                 ))}

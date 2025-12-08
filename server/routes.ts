@@ -113,6 +113,13 @@ export async function registerRoutes(
     res.json(user);
   });
 
+  app.delete("/api/users/:id", async (req, res) => {
+    const user = await storage.getUser(req.params.id);
+    if (!user) return res.status(404).json({ error: "User not found" });
+    await storage.deleteUser(req.params.id);
+    res.status(204).send();
+  });
+
   app.post("/api/auth/login", async (req, res) => {
     const { username, password, role } = req.body;
     const users = await storage.getUsers();
