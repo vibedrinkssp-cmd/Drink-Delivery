@@ -31,8 +31,18 @@ const VALID_STATUS_TRANSITIONS: Record<string, string[]> = {
   cancelled: []
 };
 
-function isValidStatusTransition(currentStatus: string, newStatus: string): boolean {
-  const allowed = VALID_STATUS_TRANSITIONS[currentStatus];
+const COUNTER_ORDER_TRANSITIONS: Record<string, string[]> = {
+  pending: ['accepted', 'cancelled'],
+  accepted: ['preparing', 'delivered', 'cancelled'],
+  preparing: ['ready', 'delivered', 'cancelled'],
+  ready: ['delivered', 'cancelled'],
+  delivered: [],
+  cancelled: []
+};
+
+function isValidStatusTransition(currentStatus: string, newStatus: string, orderType?: string): boolean {
+  const transitions = orderType === 'counter' ? COUNTER_ORDER_TRANSITIONS : VALID_STATUS_TRANSITIONS;
+  const allowed = transitions[currentStatus];
   return allowed ? allowed.includes(newStatus) : false;
 }
 
@@ -453,11 +463,12 @@ export async function registerRoutes(
     const order = await storage.getOrder(req.params.id);
     if (!order) return res.status(404).json({ error: "Order not found" });
 
-    if (!isValidStatusTransition(order.status, status)) {
+    const transitions = order.orderType === 'counter' ? COUNTER_ORDER_TRANSITIONS : VALID_STATUS_TRANSITIONS;
+    if (!isValidStatusTransition(order.status, status, order.orderType)) {
       return res.status(400).json({ 
         error: `Transicao invalida: ${order.status} -> ${status}`,
         currentStatus: order.status,
-        allowedTransitions: VALID_STATUS_TRANSITIONS[order.status] || []
+        allowedTransitions: transitions[order.status] || []
       });
     }
 
