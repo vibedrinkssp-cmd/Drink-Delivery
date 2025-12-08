@@ -242,6 +242,15 @@ export default function Login() {
                   </>
                 )}
               </Button>
+
+              <Button
+                variant="ghost"
+                className="w-full text-muted-foreground"
+                onClick={() => setLocation('/')}
+                data-testid="button-back-home"
+              >
+                Voltar para o site
+              </Button>
             </>
           )}
 
