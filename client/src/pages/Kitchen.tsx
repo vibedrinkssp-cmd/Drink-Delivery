@@ -1,16 +1,17 @@
 import { useLocation } from 'wouter';
 import { useQuery, useMutation } from '@tanstack/react-query';
-import { Clock, ChefHat, Package, LogOut, RefreshCw, Truck, User as UserIcon, Wifi, WifiOff } from 'lucide-react';
+import { ChefHat, Package, LogOut, RefreshCw, Truck, User as UserIcon, Wifi, WifiOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
 import { useOrderUpdates } from '@/hooks/use-order-updates';
 import { useAuth } from '@/lib/auth';
 import { apiRequest, queryClient } from '@/lib/queryClient';
+import { ExpandableOrderCard } from '@/components/ExpandableOrderCard';
 import type { Order, OrderItem } from '@shared/schema';
-import { ORDER_STATUS_LABELS, PAYMENT_METHOD_LABELS, ORDER_TYPE_LABELS, type OrderStatus, type PaymentMethod, type OrderType } from '@shared/schema';
+import { ORDER_TYPE_LABELS, type OrderStatus, type OrderType } from '@shared/schema';
 import { useEffect, useState } from 'react';
 
 interface OrderWithItems extends Order {
@@ -18,23 +19,12 @@ interface OrderWithItems extends Order {
   userName?: string;
 }
 
-function getElapsedTime(date: Date | string | null): string {
-  if (!date) return '0min';
-  const diff = Date.now() - new Date(date).getTime();
-  const minutes = Math.floor(diff / 60000);
-  if (minutes < 60) return `${minutes}min`;
-  const hours = Math.floor(minutes / 60);
-  return `${hours}h ${minutes % 60}min`;
-}
-
 export default function Kitchen() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const { role, logout } = useAuth();
-  const [now, setNow] = useState(Date.now());
   const [isSSEConnected, setIsSSEConnected] = useState(false);
 
-  // Real-time order updates via SSE
   useOrderUpdates({
     onConnected: () => setIsSSEConnected(true),
     onDisconnected: () => setIsSSEConnected(false),
@@ -45,14 +35,9 @@ export default function Kitchen() {
     },
   });
 
-  useEffect(() => {
-    const interval = setInterval(() => setNow(Date.now()), 30000);
-    return () => clearInterval(interval);
-  }, []);
-
   const { data: orders = [], isLoading, refetch } = useQuery<OrderWithItems[]>({
     queryKey: ['/api/orders'],
-    refetchInterval: isSSEConnected ? 30000 : 5000, // Slower polling when SSE connected
+    refetchInterval: isSSEConnected ? 30000 : 5000,
   });
 
   const updateStatusMutation = useMutation({
@@ -68,13 +53,6 @@ export default function Kitchen() {
     },
   });
 
-  const formatPrice = (price: number | string) => {
-    return new Intl.NumberFormat('pt-BR', {
-      style: 'currency',
-      currency: 'BRL'
-    }).format(Number(price));
-  };
-
   const handleLogout = () => {
     logout();
     setLocation('/admin-login');
@@ -88,6 +66,53 @@ export default function Kitchen() {
   const acceptedOrders = orders.filter(o => o.status === 'accepted');
   const preparingOrders = orders.filter(o => o.status === 'preparing');
   const readyOrders = orders.filter(o => o.status === 'ready');
+
+  const renderOrderActions = (order: OrderWithItems, status: string) => {
+    if (status === 'accepted') {
+      return (
+        <Button
+          className="w-full bg-primary text-primary-foreground py-4 text-base font-semibold"
+          onClick={() => updateStatusMutation.mutate({ orderId: order.id, status: 'preparing' })}
+          disabled={updateStatusMutation.isPending}
+          data-testid={`button-start-${order.id}`}
+        >
+          <ChefHat className="h-5 w-5 mr-2" />
+          Iniciar Producao
+        </Button>
+      );
+    }
+    if (status === 'preparing') {
+      return (
+        <Button
+          className="w-full bg-green-600 text-white py-4 text-base font-semibold"
+          onClick={() => updateStatusMutation.mutate({ orderId: order.id, status: 'ready' })}
+          disabled={updateStatusMutation.isPending}
+          data-testid={`button-ready-${order.id}`}
+        >
+          <Package className="h-5 w-5 mr-2" />
+          Pedido Pronto
+        </Button>
+      );
+    }
+    if (status === 'ready') {
+      const isDelivery = order.orderType === 'delivery';
+      if (!isDelivery) {
+        return (
+          <Button
+            className="w-full bg-cyan-600 text-white py-4 text-base font-semibold"
+            onClick={() => updateStatusMutation.mutate({ orderId: order.id, status: 'delivered' })}
+            disabled={updateStatusMutation.isPending}
+            data-testid={`button-pickup-${order.id}`}
+          >
+            <UserIcon className="h-5 w-5 mr-2" />
+            Cliente Retirou
+          </Button>
+        );
+      }
+      return null;
+    }
+    return null;
+  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -160,57 +185,16 @@ export default function Kitchen() {
                   </Card>
                 ) : (
                   acceptedOrders.map((order) => (
-                    <Card key={order.id} className="bg-card border-primary/20" data-testid={`order-${order.id}`}>
-                      <CardHeader className="flex flex-row items-start justify-between gap-4 pb-2">
-                        <div>
-                          <div className="flex items-center gap-2 mb-1">
-                            <CardTitle className="text-foreground text-xl">
-                              #{order.id.slice(-6).toUpperCase()}
-                            </CardTitle>
-                            <Badge className={order.orderType === 'counter' ? 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30' : 'bg-violet-500/20 text-violet-400 border-violet-500/30'}>
-                              {order.orderType === 'counter' ? <UserIcon className="h-3 w-3 mr-1" /> : <Truck className="h-3 w-3 mr-1" />}
-                              {ORDER_TYPE_LABELS[(order.orderType as OrderType) || 'delivery']}
-                            </Badge>
-                          </div>
-                          <p className="text-muted-foreground text-sm">
-                            {order.customerName || order.userName || 'Cliente'}
-                          </p>
-                        </div>
-                        <Badge className="bg-yellow/20 text-yellow border-yellow/30 flex items-center gap-1">
-                          <Clock className="h-3 w-3" />
-                          {getElapsedTime(order.acceptedAt || order.createdAt)}
-                        </Badge>
-                      </CardHeader>
-                      
-                      <CardContent className="space-y-4">
-                        <div className="bg-secondary/50 rounded-lg p-4 space-y-2">
-                          {order.items?.map((item, idx) => (
-                            <div key={idx} className="flex justify-between">
-                              <span className="text-foreground font-medium text-lg">
-                                {item.quantity}x {item.productName}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-
-                        {order.notes && (
-                          <div className="bg-yellow/10 border border-yellow/30 rounded-lg p-3">
-                            <p className="text-yellow text-sm font-medium">Observacoes:</p>
-                            <p className="text-foreground text-sm">{order.notes}</p>
-                          </div>
-                        )}
-
-                        <Button
-                          className="w-full bg-primary text-primary-foreground py-6 text-lg font-semibold"
-                          onClick={() => updateStatusMutation.mutate({ orderId: order.id, status: 'preparing' })}
-                          disabled={updateStatusMutation.isPending}
-                          data-testid={`button-start-${order.id}`}
-                        >
-                          <ChefHat className="h-5 w-5 mr-2" />
-                          Iniciar Producao
-                        </Button>
-                      </CardContent>
-                    </Card>
+                    <ExpandableOrderCard
+                      key={order.id}
+                      order={order}
+                      variant="kitchen"
+                      defaultExpanded={true}
+                      showElapsedTime={true}
+                      elapsedTimeDate={order.acceptedAt || order.createdAt}
+                      statusColor="bg-blue-500/20 text-blue-400 border-blue-500/30"
+                      actions={renderOrderActions(order, 'accepted')}
+                    />
                   ))
                 )}
               </div>
@@ -231,57 +215,16 @@ export default function Kitchen() {
                   </Card>
                 ) : (
                   preparingOrders.map((order) => (
-                    <Card key={order.id} className="bg-card border-orange-500/30" data-testid={`order-${order.id}`}>
-                      <CardHeader className="flex flex-row items-start justify-between gap-4 pb-2">
-                        <div>
-                          <div className="flex items-center gap-2 mb-1">
-                            <CardTitle className="text-foreground text-xl">
-                              #{order.id.slice(-6).toUpperCase()}
-                            </CardTitle>
-                            <Badge className={order.orderType === 'counter' ? 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30' : 'bg-violet-500/20 text-violet-400 border-violet-500/30'}>
-                              {order.orderType === 'counter' ? <UserIcon className="h-3 w-3 mr-1" /> : <Truck className="h-3 w-3 mr-1" />}
-                              {ORDER_TYPE_LABELS[(order.orderType as OrderType) || 'delivery']}
-                            </Badge>
-                          </div>
-                          <p className="text-muted-foreground text-sm">
-                            {order.customerName || order.userName || 'Cliente'}
-                          </p>
-                        </div>
-                        <Badge className="bg-orange-500/20 text-orange-400 border-orange-500/30 flex items-center gap-1">
-                          <Clock className="h-3 w-3" />
-                          {getElapsedTime(order.preparingAt || order.createdAt)}
-                        </Badge>
-                      </CardHeader>
-                      
-                      <CardContent className="space-y-4">
-                        <div className="bg-secondary/50 rounded-lg p-4 space-y-2">
-                          {order.items?.map((item, idx) => (
-                            <div key={idx} className="flex justify-between">
-                              <span className="text-foreground font-medium text-lg">
-                                {item.quantity}x {item.productName}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-
-                        {order.notes && (
-                          <div className="bg-yellow/10 border border-yellow/30 rounded-lg p-3">
-                            <p className="text-yellow text-sm font-medium">Observacoes:</p>
-                            <p className="text-foreground text-sm">{order.notes}</p>
-                          </div>
-                        )}
-
-                        <Button
-                          className="w-full bg-green-600 text-white py-6 text-lg font-semibold"
-                          onClick={() => updateStatusMutation.mutate({ orderId: order.id, status: 'ready' })}
-                          disabled={updateStatusMutation.isPending}
-                          data-testid={`button-ready-${order.id}`}
-                        >
-                          <Package className="h-5 w-5 mr-2" />
-                          Pedido Pronto
-                        </Button>
-                      </CardContent>
-                    </Card>
+                    <ExpandableOrderCard
+                      key={order.id}
+                      order={order}
+                      variant="kitchen"
+                      defaultExpanded={true}
+                      showElapsedTime={true}
+                      elapsedTimeDate={order.preparingAt || order.createdAt}
+                      statusColor="bg-orange-500/20 text-orange-400 border-orange-500/30"
+                      actions={renderOrderActions(order, 'preparing')}
+                    />
                   ))
                 )}
               </div>
@@ -301,70 +244,18 @@ export default function Kitchen() {
                     </CardContent>
                   </Card>
                 ) : (
-                  readyOrders.map((order) => {
-                    const isDelivery = order.orderType === 'delivery';
-                    return (
-                      <Card key={order.id} className="bg-card border-green-500/30" data-testid={`order-ready-${order.id}`}>
-                        <CardHeader className="flex flex-row items-start justify-between gap-4 pb-2">
-                          <div>
-                            <div className="flex items-center gap-2 mb-1">
-                              <CardTitle className="text-foreground text-xl">
-                                #{order.id.slice(-6).toUpperCase()}
-                              </CardTitle>
-                              <Badge className={isDelivery ? 'bg-violet-500/20 text-violet-400 border-violet-500/30' : 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30'}>
-                                {isDelivery ? <Truck className="h-3 w-3 mr-1" /> : <UserIcon className="h-3 w-3 mr-1" />}
-                                {ORDER_TYPE_LABELS[(order.orderType as OrderType) || 'delivery']}
-                              </Badge>
-                            </div>
-                            <p className="text-muted-foreground text-sm">
-                              {order.customerName || order.userName || 'Cliente'}
-                            </p>
-                          </div>
-                          <Badge className="bg-green-500/20 text-green-400 border-green-500/30 flex items-center gap-1">
-                            <Clock className="h-3 w-3" />
-                            {getElapsedTime(order.readyAt || order.createdAt)}
-                          </Badge>
-                        </CardHeader>
-                        
-                        <CardContent className="space-y-4">
-                          <div className="bg-secondary/50 rounded-lg p-4 space-y-2">
-                            {order.items?.map((item, idx) => (
-                              <div key={idx} className="flex justify-between">
-                                <span className="text-foreground font-medium text-lg">
-                                  {item.quantity}x {item.productName}
-                                </span>
-                              </div>
-                            ))}
-                          </div>
-
-                          {order.notes && (
-                            <div className="bg-yellow/10 border border-yellow/30 rounded-lg p-3">
-                              <p className="text-yellow text-sm font-medium">Observacoes:</p>
-                              <p className="text-foreground text-sm">{order.notes}</p>
-                            </div>
-                          )}
-
-                          {isDelivery ? (
-                            <div className="bg-purple-500/10 border border-purple-500/30 rounded-lg p-4 text-center">
-                              <Truck className="h-8 w-8 text-purple-400 mx-auto mb-2" />
-                              <p className="text-purple-300 text-sm font-medium">Aguardando atribuicao de motoboy</p>
-                              <p className="text-muted-foreground text-xs mt-1">O administrador ira despachar este pedido</p>
-                            </div>
-                          ) : (
-                            <Button
-                              className="w-full bg-cyan-600 text-white py-6 text-lg font-semibold"
-                              onClick={() => updateStatusMutation.mutate({ orderId: order.id, status: 'delivered' })}
-                              disabled={updateStatusMutation.isPending}
-                              data-testid={`button-pickup-${order.id}`}
-                            >
-                              <UserIcon className="h-5 w-5 mr-2" />
-                              Cliente Retirou
-                            </Button>
-                          )}
-                        </CardContent>
-                      </Card>
-                    );
-                  })
+                  readyOrders.map((order) => (
+                    <ExpandableOrderCard
+                      key={order.id}
+                      order={order}
+                      variant="kitchen"
+                      defaultExpanded={true}
+                      showElapsedTime={true}
+                      elapsedTimeDate={order.readyAt || order.createdAt}
+                      statusColor="bg-green-500/20 text-green-400 border-green-500/30"
+                      actions={renderOrderActions(order, 'ready')}
+                    />
+                  ))
                 )}
               </div>
             </div>

@@ -1,17 +1,17 @@
 import { useState } from 'react';
 import { useLocation } from 'wouter';
 import { useQuery, useMutation } from '@tanstack/react-query';
-import { MapPin, Phone, Banknote, CreditCard, QrCode, Package, LogOut, RefreshCw, Navigation, CheckCircle, Truck, Wifi, WifiOff } from 'lucide-react';
+import { Package, LogOut, RefreshCw, Navigation, CheckCircle, Truck, Wifi, WifiOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
 import { useOrderUpdates } from '@/hooks/use-order-updates';
 import { useAuth } from '@/lib/auth';
 import { apiRequest, queryClient } from '@/lib/queryClient';
+import { ExpandableOrderCard } from '@/components/ExpandableOrderCard';
 import type { Order, OrderItem, Address, Motoboy } from '@shared/schema';
-import { PAYMENT_METHOD_LABELS, type PaymentMethod } from '@shared/schema';
 
 interface OrderWithDetails extends Order {
   items: OrderItem[];
@@ -20,21 +20,12 @@ interface OrderWithDetails extends Order {
   address?: Address;
 }
 
-const PAYMENT_ICONS: Record<PaymentMethod, typeof Banknote> = {
-  cash: Banknote,
-  pix: QrCode,
-  card_pos: CreditCard,
-  card_credit: CreditCard,
-  card_debit: CreditCard,
-};
-
-export default function Motoboy() {
+export default function MotoboyPage() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const { user, role, logout } = useAuth();
   const [isSSEConnected, setIsSSEConnected] = useState(false);
 
-  // Real-time order updates via SSE
   useOrderUpdates({
     onConnected: () => setIsSSEConnected(true),
     onDisconnected: () => setIsSSEConnected(false),
@@ -48,14 +39,12 @@ export default function Motoboy() {
     },
   });
 
-  // First get motoboys to find current motoboy
   const { data: motoboys = [], isLoading: motoboyLoading } = useQuery<Motoboy[]>({
     queryKey: ['/api/motoboys'],
   });
 
   const currentMotoboy = motoboys.find(m => m.whatsapp === user?.whatsapp);
 
-  // Fetch only orders assigned to this motoboy (server-side filtering)
   const { data: dispatchedOrders = [], isLoading, refetch } = useQuery<OrderWithDetails[]>({
     queryKey: ['/api/motoboy', currentMotoboy?.id, 'orders'],
     queryFn: async () => {
@@ -81,13 +70,6 @@ export default function Motoboy() {
     },
   });
 
-  const formatPrice = (price: number | string) => {
-    return new Intl.NumberFormat('pt-BR', {
-      style: 'currency',
-      currency: 'BRL'
-    }).format(Number(price));
-  };
-
   const handleLogout = () => {
     logout();
     setLocation('/admin-login');
@@ -108,6 +90,18 @@ export default function Motoboy() {
     setLocation('/admin-login');
     return null;
   }
+
+  const renderOrderActions = (order: OrderWithDetails) => (
+    <Button
+      className="w-full bg-primary text-primary-foreground py-4 text-base font-semibold"
+      onClick={() => updateStatusMutation.mutate({ orderId: order.id, status: 'delivered' })}
+      disabled={updateStatusMutation.isPending}
+      data-testid={`button-delivered-${order.id}`}
+    >
+      <CheckCircle className="h-5 w-5 mr-2" />
+      Confirmar Entrega Realizada
+    </Button>
+  );
 
   return (
     <div className="min-h-screen bg-background">
@@ -151,7 +145,6 @@ export default function Motoboy() {
       </header>
 
       <main className="p-6 max-w-2xl mx-auto">
-        {/* Boas-vindas ao motoboy */}
         {currentMotoboy && (
           <Card className="bg-card border-primary/20 mb-6">
             <CardContent className="p-4">
@@ -206,141 +199,27 @@ export default function Motoboy() {
           </Card>
         ) : (
           <div className="space-y-6">
-            {/* Primeiro mostrar pedidos em andamento do motoboy */}
-            {dispatchedOrders.length > 0 && (
-              <div>
-                <div className="flex items-center gap-2 mb-4">
-                  <Truck className="h-5 w-5 text-purple-400" />
-                  <h2 className="text-lg font-semibold text-foreground">Minhas Entregas em Andamento</h2>
-                  <Badge className="bg-purple-500/20 text-purple-400 border-purple-500/30">
-                    {dispatchedOrders.length}
-                  </Badge>
-                </div>
-                <div className="space-y-4">
-                  {dispatchedOrders.map((order) => {
-                    const PaymentIcon = PAYMENT_ICONS[order.paymentMethod as PaymentMethod] || Banknote;
-                    
-                    return (
-                      <Card key={order.id} className="bg-card border-purple-500/30" data-testid={`order-dispatched-${order.id}`}>
-                        <CardHeader className="bg-primary/10 rounded-t-lg pb-4">
-                          <div className="flex items-start justify-between gap-2">
-                            <div>
-                              <CardTitle className="text-primary text-xl">
-                                #{order.id.slice(-6).toUpperCase()}
-                              </CardTitle>
-                              <p className="text-foreground font-medium mt-1">
-                                {order.userName || 'Cliente'}
-                              </p>
-                            </div>
-                            <Badge className="bg-purple-500/20 text-purple-400 border-purple-500/30">
-                              Em Rota
-                            </Badge>
-                          </div>
-                        </CardHeader>
-                        
-                        <CardContent className="space-y-4 pt-4">
-                          {order.address && (
-                            <div 
-                              className="bg-secondary/50 rounded-lg p-4 cursor-pointer hover-elevate"
-                              onClick={() => openMaps(order.address!)}
-                              data-testid={`button-maps-${order.id}`}
-                            >
-                              <div className="flex items-start gap-3">
-                                <MapPin className="h-5 w-5 text-primary flex-shrink-0 mt-0.5" />
-                                <div>
-                                  <p className="text-foreground font-medium">
-                                    {order.address.street}, {order.address.number}
-                                  </p>
-                                  <p className="text-muted-foreground text-sm">
-                                    {order.address.neighborhood}, {order.address.city}
-                                  </p>
-                                  {order.address.complement && (
-                                    <p className="text-muted-foreground text-sm">
-                                      {order.address.complement}
-                                    </p>
-                                  )}
-                                  {order.address.notes && (
-                                    <p className="text-yellow text-sm mt-1">
-                                      Obs: {order.address.notes}
-                                    </p>
-                                  )}
-                                  <p className="text-primary text-xs mt-2">
-                                    Toque para abrir no Maps
-                                  </p>
-                                </div>
-                              </div>
-                            </div>
-                          )}
-
-                          {order.userWhatsapp && (
-                            <Button
-                              variant="outline"
-                              className="w-full border-green-500/50 text-green-400"
-                              onClick={() => openWhatsApp(order.userWhatsapp!)}
-                              data-testid={`button-whatsapp-${order.id}`}
-                            >
-                              <Phone className="h-4 w-4 mr-2" />
-                              Ligar para Cliente
-                            </Button>
-                          )}
-
-                          <div className="grid grid-cols-2 gap-4">
-                            <div className="bg-secondary/50 rounded-lg p-4">
-                              <p className="text-muted-foreground text-sm mb-1">Pagamento</p>
-                              <div className="flex items-center gap-2">
-                                <PaymentIcon className="h-5 w-5 text-primary" />
-                                <span className="text-foreground font-medium">
-                                  {PAYMENT_METHOD_LABELS[order.paymentMethod as PaymentMethod]}
-                                </span>
-                              </div>
-                              {order.paymentMethod === 'cash' && order.changeFor && (
-                                <p className="text-yellow text-sm mt-1">
-                                  Troco para: {formatPrice(order.changeFor)}
-                                </p>
-                              )}
-                            </div>
-                            <div className="bg-secondary/50 rounded-lg p-4">
-                              <p className="text-muted-foreground text-sm mb-1">Taxa Entrega</p>
-                              <p className="text-primary font-bold text-xl">
-                                {formatPrice(order.deliveryFee)}
-                              </p>
-                            </div>
-                          </div>
-
-                          <div className="bg-secondary/50 rounded-lg p-4">
-                            <p className="text-muted-foreground text-sm mb-2">Itens do Pedido</p>
-                            {order.items?.map((item, idx) => (
-                              <div key={idx} className="flex justify-between text-sm">
-                                <span className="text-foreground">
-                                  {item.quantity}x {item.productName}
-                                </span>
-                              </div>
-                            ))}
-                          </div>
-
-                          <div className="bg-primary/10 rounded-lg p-4 flex items-center justify-between">
-                            <span className="text-foreground font-medium">Total a Cobrar</span>
-                            <span className="text-primary font-bold text-2xl">
-                              {formatPrice(order.total)}
-                            </span>
-                          </div>
-
-                          <Button
-                            className="w-full bg-primary text-primary-foreground py-6 text-lg font-semibold"
-                            onClick={() => updateStatusMutation.mutate({ orderId: order.id, status: 'delivered' })}
-                            disabled={updateStatusMutation.isPending}
-                            data-testid={`button-delivered-${order.id}`}
-                          >
-                            <CheckCircle className="h-5 w-5 mr-2" />
-                            Confirmar Entrega Realizada
-                          </Button>
-                        </CardContent>
-                      </Card>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
+            <div className="flex items-center gap-2 mb-4">
+              <Truck className="h-5 w-5 text-purple-400" />
+              <h2 className="text-lg font-semibold text-foreground">Minhas Entregas em Andamento</h2>
+              <Badge className="bg-purple-500/20 text-purple-400 border-purple-500/30">
+                {dispatchedOrders.length}
+              </Badge>
+            </div>
+            <div className="space-y-4">
+              {dispatchedOrders.map((order) => (
+                <ExpandableOrderCard
+                  key={order.id}
+                  order={order}
+                  variant="motoboy"
+                  defaultExpanded={true}
+                  statusColor="bg-purple-500/20 text-purple-400 border-purple-500/30"
+                  onOpenMaps={openMaps}
+                  onOpenWhatsApp={openWhatsApp}
+                  actions={renderOrderActions(order)}
+                />
+              ))}
+            </div>
           </div>
         )}
       </main>
