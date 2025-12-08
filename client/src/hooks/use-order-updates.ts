@@ -33,19 +33,31 @@ export function useOrderUpdates(options: UseOrderUpdatesOptions = {}) {
 
       eventSource.addEventListener('order_created', (event) => {
         const data = JSON.parse(event.data);
-        queryClient.invalidateQueries({ queryKey: ['/api/orders'] });
+        // Invalidate all order-related queries to update all screens
+        queryClient.invalidateQueries({ predicate: (query) => {
+          const key = query.queryKey;
+          return Array.isArray(key) && key[0] === '/api/orders';
+        }});
         options.onOrderCreated?.(data);
       });
 
       eventSource.addEventListener('order_status_changed', (event) => {
         const data = JSON.parse(event.data);
-        queryClient.invalidateQueries({ queryKey: ['/api/orders'] });
+        // Invalidate all order-related queries to update all screens
+        queryClient.invalidateQueries({ predicate: (query) => {
+          const key = query.queryKey;
+          return Array.isArray(key) && key[0] === '/api/orders';
+        }});
         options.onOrderStatusChanged?.(data);
       });
 
       eventSource.addEventListener('order_assigned', (event) => {
         const data = JSON.parse(event.data);
-        queryClient.invalidateQueries({ queryKey: ['/api/orders'] });
+        // Invalidate all order-related queries to update all screens
+        queryClient.invalidateQueries({ predicate: (query) => {
+          const key = query.queryKey;
+          return Array.isArray(key) && key[0] === '/api/orders';
+        }});
         options.onOrderAssigned?.(data);
       });
 
