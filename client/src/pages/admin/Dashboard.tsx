@@ -37,7 +37,8 @@ import {
   Key,
   Power,
   Wifi,
-  WifiOff
+  WifiOff,
+  Search
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { useRef} from 'react';
@@ -125,6 +126,9 @@ function StatusBadge({ status }: { status: OrderStatus }) {
 
 function OrdersTab() {
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [searchTerm, setSearchTerm] = useState<string>('');
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const ORDERS_PER_PAGE = 30;
   const { toast } = useToast();
 
   const { data: orders = [], isLoading } = useQuery<Order[]>({
@@ -154,25 +158,58 @@ function OrdersTab() {
     },
   });
 
-  const filteredOrders = orders.filter(order => 
-    statusFilter === 'all' || order.status === statusFilter
+  const filteredOrders = orders.filter(order => {
+    const matchesStatus = statusFilter === 'all' || order.status === statusFilter;
+    const searchLower = searchTerm.toLowerCase().trim();
+    const matchesSearch = searchLower === '' || 
+      order.id.toLowerCase().includes(searchLower) ||
+      (order.customerName && order.customerName.toLowerCase().includes(searchLower));
+    return matchesStatus && matchesSearch;
+  });
+
+  const totalPages = Math.ceil(filteredOrders.length / ORDERS_PER_PAGE);
+  const paginatedOrders = filteredOrders.slice(
+    (currentPage - 1) * ORDERS_PER_PAGE,
+    currentPage * ORDERS_PER_PAGE
   );
+
+  const handleStatusFilterChange = (value: string) => {
+    setStatusFilter(value);
+    setCurrentPage(1);
+  };
+
+  const handleSearchChange = (value: string) => {
+    setSearchTerm(value);
+    setCurrentPage(1);
+  };
 
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <h2 className="font-serif text-3xl text-primary">Pedidos</h2>
-        <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-48 bg-secondary border-primary/30" data-testid="select-status-filter">
-            <SelectValue placeholder="Filtrar por status" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Todos</SelectItem>
-            {Object.entries(ORDER_STATUS_LABELS).map(([key, label]) => (
-              <SelectItem key={key} value={key}>{label}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Buscar por ID ou cliente..."
+              value={searchTerm}
+              onChange={(e) => handleSearchChange(e.target.value)}
+              className="pl-9 w-64 bg-secondary border-primary/30"
+              data-testid="input-search-orders"
+            />
+          </div>
+          <Select value={statusFilter} onValueChange={handleStatusFilterChange}>
+            <SelectTrigger className="w-48 bg-secondary border-primary/30" data-testid="select-status-filter">
+              <SelectValue placeholder="Filtrar por status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos</SelectItem>
+              {Object.entries(ORDER_STATUS_LABELS).map(([key, label]) => (
+                <SelectItem key={key} value={key}>{label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
       {isLoading ? (
@@ -190,75 +227,107 @@ function OrdersTab() {
           </CardContent>
         </Card>
       ) : (
-        <div className="grid gap-4">
-          {filteredOrders.map(order => (
-            <Card key={order.id} data-testid={`card-order-${order.id}`}>
-              <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2 pb-2">
-                <div className="flex flex-wrap items-center gap-2">
-                  <CardTitle className="text-lg">Pedido #{order.id.slice(0, 8)}</CardTitle>
-                  <StatusBadge status={order.status as OrderStatus} />
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-sm text-muted-foreground">{formatDate(order.createdAt)}</span>
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    className="h-7 w-7 text-muted-foreground/50 hover:text-destructive"
-                    onClick={() => {
-                      if (confirm('Tem certeza que deseja excluir este pedido?')) {
-                        deleteOrderMutation.mutate(order.id);
-                      }
-                    }}
-                    disabled={deleteOrderMutation.isPending}
-                    data-testid={`button-delete-order-${order.id}`}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex flex-wrap gap-4 text-sm">
-                  <div>
-                    <span className="text-muted-foreground">Total: </span>
-                    <span className="font-semibold text-primary">{formatCurrency(order.total)}</span>
+        <>
+          <div className="text-sm text-muted-foreground">
+            Mostrando {(currentPage - 1) * ORDERS_PER_PAGE + 1} - {Math.min(currentPage * ORDERS_PER_PAGE, filteredOrders.length)} de {filteredOrders.length} pedidos
+          </div>
+          <div className="grid gap-4">
+            {paginatedOrders.map(order => (
+              <Card key={order.id} data-testid={`card-order-${order.id}`}>
+                <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2 pb-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <CardTitle className="text-lg">Pedido #{order.id.slice(0, 8)}</CardTitle>
+                    <StatusBadge status={order.status as OrderStatus} />
                   </div>
-                  <div>
-                    <span className="text-muted-foreground">Pagamento: </span>
-                    <span>{PAYMENT_METHOD_LABELS[order.paymentMethod as PaymentMethod]}</span>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">Entrega: </span>
-                    <span>{formatCurrency(order.deliveryFee)}</span>
-                  </div>
-                </div>
-                
-                <div className="flex flex-wrap gap-2">
-                  {order.status === 'pending' && (
-                    <Button 
-                      size="sm"
-                      onClick={() => updateStatusMutation.mutate({ orderId: order.id, status: 'accepted' })}
-                      data-testid={`button-accept-${order.id}`}
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-muted-foreground">{formatDate(order.createdAt)}</span>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-7 w-7 text-muted-foreground/50 hover:text-destructive"
+                      onClick={() => {
+                        if (confirm('Tem certeza que deseja excluir este pedido?')) {
+                          deleteOrderMutation.mutate(order.id);
+                        }
+                      }}
+                      disabled={deleteOrderMutation.isPending}
+                      data-testid={`button-delete-order-${order.id}`}
                     >
-                      <Check className="w-4 h-4 mr-1" />
-                      Aceitar
+                      <Trash2 className="h-4 w-4" />
                     </Button>
-                  )}
-                  {order.status === 'pending' && (
-                    <Button 
-                      size="sm" 
-                      variant="outline"
-                      onClick={() => updateStatusMutation.mutate({ orderId: order.id, status: 'cancelled' })}
-                      data-testid={`button-cancel-${order.id}`}
-                    >
-                      <X className="w-4 h-4 mr-1" />
-                      Cancelar
-                    </Button>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="flex flex-wrap gap-4 text-sm">
+                    <div>
+                      <span className="text-muted-foreground">Total: </span>
+                      <span className="font-semibold text-primary">{formatCurrency(order.total)}</span>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground">Pagamento: </span>
+                      <span>{PAYMENT_METHOD_LABELS[order.paymentMethod as PaymentMethod]}</span>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground">Entrega: </span>
+                      <span>{formatCurrency(order.deliveryFee)}</span>
+                    </div>
+                  </div>
+                  
+                  <div className="flex flex-wrap gap-2">
+                    {order.status === 'pending' && (
+                      <Button 
+                        size="sm"
+                        onClick={() => updateStatusMutation.mutate({ orderId: order.id, status: 'accepted' })}
+                        data-testid={`button-accept-${order.id}`}
+                      >
+                        <Check className="w-4 h-4 mr-1" />
+                        Aceitar
+                      </Button>
+                    )}
+                    {order.status === 'pending' && (
+                      <Button 
+                        size="sm" 
+                        variant="outline"
+                        onClick={() => updateStatusMutation.mutate({ orderId: order.id, status: 'cancelled' })}
+                        data-testid={`button-cancel-${order.id}`}
+                      >
+                        <X className="w-4 h-4 mr-1" />
+                        Cancelar
+                      </Button>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+          {totalPages > 1 && (
+            <div className="flex items-center justify-center gap-4 pt-4">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+                data-testid="button-prev-page"
+              >
+                <ChevronLeft className="w-4 h-4 mr-1" />
+                Anterior
+              </Button>
+              <span className="text-sm text-muted-foreground">
+                Pagina {currentPage} de {totalPages}
+              </span>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages}
+                data-testid="button-next-page"
+              >
+                Proxima
+                <ChevronRight className="w-4 h-4 ml-1" />
+              </Button>
+            </div>
+          )}
+        </>
       )}
     </div>
   );
