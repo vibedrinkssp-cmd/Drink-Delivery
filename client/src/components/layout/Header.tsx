@@ -31,15 +31,6 @@ export function Header({ onCartOpen }: HeaderProps) {
             />
           </Link>
 
-          <nav className="hidden md:flex items-center gap-6">
-            <Link href="/" className="text-white/80 hover:text-primary transition-colors font-medium">
-              Cardapio
-            </Link>
-            <Link href="/sobre" className="text-white/80 hover:text-primary transition-colors font-medium">
-              Sobre
-            </Link>
-          </nav>
-
           <div className="flex items-center gap-2">
             <Button
               variant="ghost"
@@ -93,20 +84,6 @@ export function Header({ onCartOpen }: HeaderProps) {
               </SheetTrigger>
               <SheetContent side="right" className="bg-black border-primary/20">
                 <div className="flex flex-col gap-6 mt-8">
-                  <Link 
-                    href="/" 
-                    className="text-white text-lg font-medium"
-                    onClick={() => setMobileMenuOpen(false)}
-                  >
-                    Cardapio
-                  </Link>
-                  <Link 
-                    href="/sobre" 
-                    className="text-white text-lg font-medium"
-                    onClick={() => setMobileMenuOpen(false)}
-                  >
-                    Sobre
-                  </Link>
                   {isAuthenticated && (
                     <>
                       <Link 
