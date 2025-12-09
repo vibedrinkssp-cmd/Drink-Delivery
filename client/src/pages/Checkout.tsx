@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useLocation } from 'wouter';
-import { MapPin, CreditCard, Banknote, QrCode, Truck, Tag, ArrowLeft, Loader2, Copy, Check } from 'lucide-react';
+import { MapPin, CreditCard, Banknote, QrCode, Truck, Tag, ArrowLeft, Loader2, Copy, Check, AlertTriangle } from 'lucide-react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -8,12 +8,20 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Separator } from '@/components/ui/separator';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { useToast } from '@/hooks/use-toast';
 import { useCart } from '@/lib/cart';
 import { useAuth } from '@/lib/auth';
 import { apiRequest, queryClient } from '@/lib/queryClient';
 import type { Settings, PaymentMethod } from '@shared/schema';
 import { PAYMENT_METHOD_LABELS } from '@shared/schema';
+
+interface DeliveryCalculation {
+  distance: number;
+  fee: number;
+  withinRange: boolean;
+  maxDistance: number;
+}
 
 export default function Checkout() {
   const [, setLocation] = useLocation();
@@ -30,10 +38,21 @@ export default function Checkout() {
     queryKey: ['/api/settings'],
   });
 
-  const deliveryRate = Number(settings?.deliveryRatePerKm ?? 1.25);
-  const minDeliveryFee = Number(settings?.minDeliveryFee ?? 5);
-  const estimatedDistance = 5;
-  const deliveryFee = Math.max(estimatedDistance * deliveryRate, minDeliveryFee);
+  const { data: deliveryCalc, isLoading: isCalculatingDelivery, error: deliveryError } = useQuery<DeliveryCalculation>({
+    queryKey: ['/api/delivery/calculate', address?.id],
+    queryFn: async () => {
+      if (!address) throw new Error('No address');
+      const response = await apiRequest('POST', '/api/delivery/calculate', {
+        addressId: address.id,
+      });
+      return await response.json();
+    },
+    enabled: !!address,
+  });
+
+  const deliveryFee = deliveryCalc?.fee ?? 0;
+  const deliveryDistance = deliveryCalc?.distance ?? 0;
+  const isOutOfRange = deliveryCalc ? !deliveryCalc.withinRange : false;
   
   const totalAfterDiscount = subtotal - comboDiscount;
   const total = totalAfterDiscount + deliveryFee;
@@ -52,7 +71,7 @@ export default function Checkout() {
         })),
         subtotal,
         deliveryFee,
-        deliveryDistance: estimatedDistance,
+        deliveryDistance: deliveryDistance,
         discount: comboDiscount,
         total,
         paymentMethod,
@@ -289,11 +308,25 @@ export default function Checkout() {
                   <div className="flex justify-between text-sm">
                     <span className="text-muted-foreground flex items-center gap-1">
                       <Truck className="h-3 w-3" />
-                      Taxa de entrega
+                      Taxa de entrega ({deliveryDistance.toFixed(1)} km)
                     </span>
-                    <span className="text-foreground">{formatPrice(deliveryFee)}</span>
+                    {isCalculatingDelivery ? (
+                      <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                    ) : (
+                      <span className="text-foreground">{formatPrice(deliveryFee)}</span>
+                    )}
                   </div>
                 </div>
+
+                {isOutOfRange && deliveryCalc && (
+                  <Alert variant="destructive" className="bg-destructive/10 border-destructive/30">
+                    <AlertTriangle className="h-4 w-4" />
+                    <AlertTitle>Fora da area de entrega</AlertTitle>
+                    <AlertDescription>
+                      A distancia de {deliveryDistance.toFixed(1)} km excede o limite de {deliveryCalc.maxDistance} km.
+                    </AlertDescription>
+                  </Alert>
+                )}
 
                 <Separator className="bg-primary/20" />
 
@@ -305,11 +338,15 @@ export default function Checkout() {
                 <Button
                   className="w-full bg-primary text-primary-foreground font-semibold py-6"
                   onClick={() => createOrderMutation.mutate()}
-                  disabled={createOrderMutation.isPending}
+                  disabled={createOrderMutation.isPending || isCalculatingDelivery || isOutOfRange}
                   data-testid="button-place-order"
                 >
                   {createOrderMutation.isPending ? (
                     <Loader2 className="h-5 w-5 animate-spin" />
+                  ) : isCalculatingDelivery ? (
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                  ) : isOutOfRange ? (
+                    'Endereco fora da area de entrega'
                   ) : (
                     `Confirmar Pedido - ${formatPrice(total)}`
                   )}
