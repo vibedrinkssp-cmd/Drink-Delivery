@@ -65,7 +65,7 @@ export function ProductCard({ product }: ProductCardProps) {
 
         <div className="flex items-center justify-between gap-2 mt-auto">
           <span 
-            className="text-xl font-bold text-yellow"
+            className="text-lg font-bold text-yellow truncate min-w-0"
             data-testid={`text-product-price-${product.id}`}
           >
             {formatPrice(product.salePrice)}
@@ -76,18 +76,18 @@ export function ProductCard({ product }: ProductCardProps) {
               Indisponivel
             </Button>
           ) : quantity > 0 ? (
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1 flex-shrink-0">
               <Button
                 variant="outline"
                 size="icon"
-                className="h-8 w-8 border-primary text-primary"
+                className="h-7 w-7 border-primary text-primary"
                 onClick={() => updateQuantity(product.id, quantity - 1)}
                 data-testid={`button-decrease-${product.id}`}
               >
-                <Minus className="h-4 w-4" />
+                <Minus className="h-3 w-3" />
               </Button>
               <span 
-                className="w-8 text-center font-semibold text-card-foreground"
+                className="w-6 text-center font-semibold text-card-foreground text-sm"
                 data-testid={`text-quantity-${product.id}`}
               >
                 {quantity}
@@ -95,21 +95,21 @@ export function ProductCard({ product }: ProductCardProps) {
               <Button
                 variant="outline"
                 size="icon"
-                className="h-8 w-8 border-primary text-primary"
+                className="h-7 w-7 border-primary text-primary"
                 onClick={() => addItem(product)}
                 data-testid={`button-increase-${product.id}`}
               >
-                <Plus className="h-4 w-4" />
+                <Plus className="h-3 w-3" />
               </Button>
             </div>
           ) : (
             <Button
               size="icon"
-              className="bg-primary text-primary-foreground"
+              className="h-7 w-7 bg-primary text-primary-foreground"
               onClick={() => addItem(product)}
               data-testid={`button-add-${product.id}`}
             >
-              <Plus className="h-4 w-4" />
+              <Plus className="h-3 w-3" />
             </Button>
           )}
         </div>
