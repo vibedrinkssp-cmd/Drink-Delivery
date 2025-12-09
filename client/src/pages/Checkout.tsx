@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useLocation } from 'wouter';
 import { MapPin, CreditCard, Banknote, QrCode, Truck, Tag, ArrowLeft, Loader2, Copy, Check } from 'lucide-react';
 import { useMutation, useQuery } from '@tanstack/react-query';
@@ -87,14 +87,20 @@ export default function Checkout() {
     }).format(price);
   };
 
-  if (!isAuthenticated || !address) {
-    setLocation('/login?redirect=/checkout');
-    return null;
-  }
+  useEffect(() => {
+    if (!isAuthenticated || !address) {
+      setLocation('/login?redirect=/checkout');
+    } else if (items.length === 0) {
+      setLocation('/');
+    }
+  }, [isAuthenticated, address, items.length, setLocation]);
 
-  if (items.length === 0) {
-    setLocation('/');
-    return null;
+  if (!isAuthenticated || !address || items.length === 0) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
   }
 
   return (
