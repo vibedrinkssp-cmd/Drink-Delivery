@@ -69,7 +69,7 @@ import { useNotificationSound } from '@/hooks/use-notification-sound';
 import { apiRequest, queryClient } from '@/lib/queryClient';
 import { ProductImageUploader } from '@/components/ProductImageUploader';
 import { ExpandableOrderCard } from '@/components/ExpandableOrderCard';
-import type { Order, Product, Category, Motoboy, User, Settings as SettingsType, OrderItem, Address } from '@shared/schema';
+import type { Order, Product, Category, Motoboy, User, Settings as SettingsType, OrderItem, Address, DeliveryZone, Neighborhood } from '@shared/schema';
 import { ORDER_STATUS_LABELS, PAYMENT_METHOD_LABELS, ORDER_TYPE_LABELS, type OrderStatus, type PaymentMethod, type OrderType } from '@shared/schema';
 
 const tabs = [
@@ -82,6 +82,7 @@ const tabs = [
   { id: 'produtos', label: 'Produtos', icon: ShoppingBag },
   { id: 'categorias', label: 'Categorias', icon: Grid3X3 },
   { id: 'motoboys', label: 'Motoboys', icon: Bike },
+  { id: 'zonas', label: 'Zonas', icon: MapPin },
   { id: 'configuracoes', label: 'Configuracoes', icon: Settings },
 ];
 
@@ -3409,6 +3410,423 @@ function MotoboysTab() {
   );
 }
 
+function ZonasTab() {
+  const { toast } = useToast();
+  const [editingZone, setEditingZone] = useState<DeliveryZone | null>(null);
+  const [editingNeighborhood, setEditingNeighborhood] = useState<Neighborhood | null>(null);
+  const [isZoneDialogOpen, setIsZoneDialogOpen] = useState(false);
+  const [isNeighborhoodDialogOpen, setIsNeighborhoodDialogOpen] = useState(false);
+  const [selectedZoneForNeighborhood, setSelectedZoneForNeighborhood] = useState<string>('');
+
+  const { data: zones = [], isLoading: zonesLoading } = useQuery<DeliveryZone[]>({
+    queryKey: ['/api/delivery-zones'],
+  });
+
+  const { data: neighborhoods = [], isLoading: neighborhoodsLoading } = useQuery<Neighborhood[]>({
+    queryKey: ['/api/neighborhoods'],
+  });
+
+  const createZoneMutation = useMutation({
+    mutationFn: async (data: Partial<DeliveryZone>) => {
+      return apiRequest('POST', '/api/delivery-zones', data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/delivery-zones'] });
+      toast({ title: 'Zona criada com sucesso!' });
+      setIsZoneDialogOpen(false);
+      setEditingZone(null);
+    },
+    onError: () => {
+      toast({ title: 'Erro ao criar zona', variant: 'destructive' });
+    },
+  });
+
+  const updateZoneMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: Partial<DeliveryZone> }) => {
+      return apiRequest('PATCH', `/api/delivery-zones/${id}`, data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/delivery-zones'] });
+      toast({ title: 'Zona atualizada!' });
+      setIsZoneDialogOpen(false);
+      setEditingZone(null);
+    },
+    onError: () => {
+      toast({ title: 'Erro ao atualizar zona', variant: 'destructive' });
+    },
+  });
+
+  const deleteZoneMutation = useMutation({
+    mutationFn: async (id: string) => {
+      return apiRequest('DELETE', `/api/delivery-zones/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/delivery-zones'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/neighborhoods'] });
+      toast({ title: 'Zona excluida!' });
+    },
+    onError: () => {
+      toast({ title: 'Erro ao excluir zona. Remova os bairros primeiro.', variant: 'destructive' });
+    },
+  });
+
+  const createNeighborhoodMutation = useMutation({
+    mutationFn: async (data: Partial<Neighborhood>) => {
+      return apiRequest('POST', '/api/neighborhoods', data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/neighborhoods'] });
+      toast({ title: 'Bairro criado com sucesso!' });
+      setIsNeighborhoodDialogOpen(false);
+      setEditingNeighborhood(null);
+    },
+    onError: () => {
+      toast({ title: 'Erro ao criar bairro', variant: 'destructive' });
+    },
+  });
+
+  const updateNeighborhoodMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: Partial<Neighborhood> }) => {
+      return apiRequest('PATCH', `/api/neighborhoods/${id}`, data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/neighborhoods'] });
+      toast({ title: 'Bairro atualizado!' });
+      setIsNeighborhoodDialogOpen(false);
+      setEditingNeighborhood(null);
+    },
+    onError: () => {
+      toast({ title: 'Erro ao atualizar bairro', variant: 'destructive' });
+    },
+  });
+
+  const deleteNeighborhoodMutation = useMutation({
+    mutationFn: async (id: string) => {
+      return apiRequest('DELETE', `/api/neighborhoods/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/neighborhoods'] });
+      toast({ title: 'Bairro excluido!' });
+    },
+    onError: () => {
+      toast({ title: 'Erro ao excluir bairro', variant: 'destructive' });
+    },
+  });
+
+  const handleZoneSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const formData = new FormData(e.currentTarget);
+    const data = {
+      code: (formData.get('code') as string).toUpperCase(),
+      name: formData.get('name') as string,
+      description: formData.get('description') as string || null,
+      fee: formData.get('fee') as string,
+      isActive: formData.get('isActive') === 'on',
+    };
+
+    if (editingZone) {
+      updateZoneMutation.mutate({ id: editingZone.id, data });
+    } else {
+      createZoneMutation.mutate(data);
+    }
+  };
+
+  const handleNeighborhoodSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const formData = new FormData(e.currentTarget);
+    const data = {
+      name: formData.get('name') as string,
+      zoneId: formData.get('zoneId') as string,
+      isActive: formData.get('isActive') === 'on',
+    };
+
+    if (editingNeighborhood) {
+      updateNeighborhoodMutation.mutate({ id: editingNeighborhood.id, data });
+    } else {
+      createNeighborhoodMutation.mutate(data);
+    }
+  };
+
+  const openCreateZone = () => {
+    setEditingZone(null);
+    setIsZoneDialogOpen(true);
+  };
+
+  const openEditZone = (zone: DeliveryZone) => {
+    setEditingZone(zone);
+    setIsZoneDialogOpen(true);
+  };
+
+  const openCreateNeighborhood = (zoneId?: string) => {
+    setEditingNeighborhood(null);
+    setSelectedZoneForNeighborhood(zoneId || '');
+    setIsNeighborhoodDialogOpen(true);
+  };
+
+  const openEditNeighborhood = (neighborhood: Neighborhood) => {
+    setEditingNeighborhood(neighborhood);
+    setSelectedZoneForNeighborhood(neighborhood.zoneId);
+    setIsNeighborhoodDialogOpen(true);
+  };
+
+  const getNeighborhoodsByZone = (zoneId: string) => {
+    return neighborhoods.filter(n => n.zoneId === zoneId);
+  };
+
+  const sortedZones = [...zones].sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <h2 className="font-serif text-3xl text-primary">Zonas de Entrega</h2>
+        <div className="flex gap-2">
+          <Button onClick={openCreateZone} data-testid="button-create-zone">
+            <Plus className="w-4 h-4 mr-2" />
+            Nova Zona
+          </Button>
+          <Button onClick={() => openCreateNeighborhood()} variant="outline" data-testid="button-create-neighborhood">
+            <Plus className="w-4 h-4 mr-2" />
+            Novo Bairro
+          </Button>
+        </div>
+      </div>
+
+      {zonesLoading ? (
+        <div className="grid gap-4">
+          {[1, 2, 3].map(i => (
+            <Card key={i} className="animate-pulse">
+              <CardContent className="h-32" />
+            </Card>
+          ))}
+        </div>
+      ) : sortedZones.length === 0 ? (
+        <Card>
+          <CardContent className="py-12 text-center text-muted-foreground">
+            Nenhuma zona cadastrada. Clique em "Nova Zona" para criar.
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="grid gap-4">
+          {sortedZones.map(zone => {
+            const zoneNeighborhoods = getNeighborhoodsByZone(zone.id);
+            return (
+              <Card key={zone.id} data-testid={`card-zone-${zone.id}`}>
+                <CardHeader className="flex flex-row items-center justify-between gap-4 pb-2">
+                  <div className="flex items-center gap-3">
+                    <Badge className={zone.isActive ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}>
+                      {zone.code}
+                    </Badge>
+                    <CardTitle className="text-lg">{zone.name}</CardTitle>
+                    <Badge variant="outline" className="text-primary border-primary">
+                      {formatCurrency(zone.fee)}
+                    </Badge>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => openCreateNeighborhood(zone.id)}
+                      data-testid={`button-add-neighborhood-${zone.id}`}
+                    >
+                      <Plus className="w-4 h-4 mr-1" />
+                      Bairro
+                    </Button>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      onClick={() => openEditZone(zone)}
+                      data-testid={`button-edit-zone-${zone.id}`}
+                    >
+                      <Edit2 className="w-4 h-4" />
+                    </Button>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      onClick={() => {
+                        if (zoneNeighborhoods.length > 0) {
+                          toast({ title: 'Remova os bairros antes de excluir a zona', variant: 'destructive' });
+                          return;
+                        }
+                        if (confirm('Tem certeza que deseja excluir esta zona?')) {
+                          deleteZoneMutation.mutate(zone.id);
+                        }
+                      }}
+                      data-testid={`button-delete-zone-${zone.id}`}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  {zone.description && (
+                    <p className="text-sm text-muted-foreground mb-3">{zone.description}</p>
+                  )}
+                  {zoneNeighborhoods.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">Nenhum bairro cadastrado nesta zona.</p>
+                  ) : (
+                    <div className="flex flex-wrap gap-2">
+                      {zoneNeighborhoods.map(neighborhood => (
+                        <Badge
+                          key={neighborhood.id}
+                          variant="secondary"
+                          className={`cursor-pointer ${neighborhood.isActive ? '' : 'opacity-50'}`}
+                          onClick={() => openEditNeighborhood(neighborhood)}
+                          data-testid={`badge-neighborhood-${neighborhood.id}`}
+                        >
+                          {neighborhood.name}
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-4 w-4 ml-1 p-0"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (confirm(`Excluir bairro "${neighborhood.name}"?`)) {
+                                deleteNeighborhoodMutation.mutate(neighborhood.id);
+                              }
+                            }}
+                            data-testid={`button-delete-neighborhood-${neighborhood.id}`}
+                          >
+                            <X className="w-3 h-3" />
+                          </Button>
+                        </Badge>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+      )}
+
+      <Dialog open={isZoneDialogOpen} onOpenChange={setIsZoneDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{editingZone ? 'Editar Zona' : 'Nova Zona'}</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleZoneSubmit} className="space-y-4">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <Label htmlFor="code">Codigo (ex: Z1, Z2)</Label>
+                <Input
+                  id="code"
+                  name="code"
+                  defaultValue={editingZone?.code || ''}
+                  required
+                  maxLength={5}
+                  className="uppercase"
+                  data-testid="input-zone-code"
+                />
+              </div>
+              <div>
+                <Label htmlFor="fee">Taxa de Entrega (R$)</Label>
+                <Input
+                  id="fee"
+                  name="fee"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  defaultValue={editingZone?.fee || ''}
+                  required
+                  data-testid="input-zone-fee"
+                />
+              </div>
+            </div>
+            <div>
+              <Label htmlFor="name">Nome da Zona</Label>
+              <Input
+                id="name"
+                name="name"
+                defaultValue={editingZone?.name || ''}
+                required
+                data-testid="input-zone-name"
+              />
+            </div>
+            <div>
+              <Label htmlFor="description">Descricao (opcional)</Label>
+              <Textarea
+                id="description"
+                name="description"
+                defaultValue={editingZone?.description || ''}
+                data-testid="input-zone-description"
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <Switch
+                id="isActive"
+                name="isActive"
+                defaultChecked={editingZone?.isActive ?? true}
+                data-testid="switch-zone-active"
+              />
+              <Label htmlFor="isActive">Zona ativa</Label>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="outline" onClick={() => setIsZoneDialogOpen(false)}>
+                Cancelar
+              </Button>
+              <Button type="submit" disabled={createZoneMutation.isPending || updateZoneMutation.isPending} data-testid="button-save-zone">
+                {editingZone ? 'Salvar' : 'Criar'}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isNeighborhoodDialogOpen} onOpenChange={setIsNeighborhoodDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{editingNeighborhood ? 'Editar Bairro' : 'Novo Bairro'}</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleNeighborhoodSubmit} className="space-y-4">
+            <div>
+              <Label htmlFor="neighborhoodName">Nome do Bairro</Label>
+              <Input
+                id="neighborhoodName"
+                name="name"
+                defaultValue={editingNeighborhood?.name || ''}
+                required
+                data-testid="input-neighborhood-name"
+              />
+            </div>
+            <div>
+              <Label htmlFor="zoneId">Zona</Label>
+              <Select name="zoneId" defaultValue={selectedZoneForNeighborhood} required>
+                <SelectTrigger data-testid="select-neighborhood-zone">
+                  <SelectValue placeholder="Selecione a zona" />
+                </SelectTrigger>
+                <SelectContent>
+                  {sortedZones.map(zone => (
+                    <SelectItem key={zone.id} value={zone.id}>
+                      {zone.code} - {zone.name} ({formatCurrency(zone.fee)})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex items-center gap-2">
+              <Switch
+                id="neighborhoodIsActive"
+                name="isActive"
+                defaultChecked={editingNeighborhood?.isActive ?? true}
+                data-testid="switch-neighborhood-active"
+              />
+              <Label htmlFor="neighborhoodIsActive">Bairro ativo</Label>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="outline" onClick={() => setIsNeighborhoodDialogOpen(false)}>
+                Cancelar
+              </Button>
+              <Button type="submit" disabled={createNeighborhoodMutation.isPending || updateNeighborhoodMutation.isPending} data-testid="button-save-neighborhood">
+                {editingNeighborhood ? 'Salvar' : 'Criar'}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
 function ConfiguracoesTab() {
   const { toast } = useToast();
 
@@ -3572,6 +3990,7 @@ export default function AdminDashboard() {
       case 'produtos': return <ProdutosTab />;
       case 'categorias': return <CategoriasTab />;
       case 'motoboys': return <MotoboysTab />;
+      case 'zonas': return <ZonasTab />;
       case 'configuracoes': return <ConfiguracoesTab />;
       default: return <OrdersTab />;
     }

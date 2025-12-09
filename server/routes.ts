@@ -1172,5 +1172,171 @@ export async function registerRoutes(
     }
   });
 
+  // =============================================
+  // Delivery Zones API
+  // =============================================
+  app.get("/api/delivery-zones", async (_req, res) => {
+    const zones = await storage.getDeliveryZones();
+    res.json(zones);
+  });
+
+  app.get("/api/delivery-zones/:id", async (req, res) => {
+    const zone = await storage.getDeliveryZone(req.params.id);
+    if (!zone) return res.status(404).json({ error: "Zone not found" });
+    res.json(zone);
+  });
+
+  app.post("/api/delivery-zones", async (req, res) => {
+    try {
+      const zone = await storage.createDeliveryZone(req.body);
+      res.status(201).json(zone);
+    } catch (error: any) {
+      console.error("Error creating delivery zone:", error);
+      if (error.code === '23505') {
+        return res.status(400).json({ error: "Codigo de zona ja existe" });
+      }
+      res.status(500).json({ error: "Erro ao criar zona" });
+    }
+  });
+
+  app.patch("/api/delivery-zones/:id", async (req, res) => {
+    try {
+      const zone = await storage.updateDeliveryZone(req.params.id, req.body);
+      if (!zone) return res.status(404).json({ error: "Zone not found" });
+      res.json(zone);
+    } catch (error: any) {
+      console.error("Error updating delivery zone:", error);
+      if (error.code === '23505') {
+        return res.status(400).json({ error: "Codigo de zona ja existe" });
+      }
+      res.status(500).json({ error: "Erro ao atualizar zona" });
+    }
+  });
+
+  app.delete("/api/delivery-zones/:id", async (req, res) => {
+    try {
+      // Check if zone has neighborhoods
+      const neighborhoods = await storage.getNeighborhoodsByZone(req.params.id);
+      if (neighborhoods.length > 0) {
+        return res.status(400).json({ 
+          error: `Nao e possivel excluir zona com ${neighborhoods.length} bairro(s) vinculado(s). Remova os bairros primeiro.` 
+        });
+      }
+      const deleted = await storage.deleteDeliveryZone(req.params.id);
+      if (!deleted) return res.status(404).json({ error: "Zone not found" });
+      res.status(204).send();
+    } catch (error: any) {
+      console.error("Error deleting delivery zone:", error);
+      res.status(500).json({ error: "Erro ao excluir zona" });
+    }
+  });
+
+  // =============================================
+  // Neighborhoods API
+  // =============================================
+  app.get("/api/neighborhoods", async (_req, res) => {
+    const neighborhoods = await storage.getNeighborhoods();
+    res.json(neighborhoods);
+  });
+
+  app.get("/api/neighborhoods/zone/:zoneId", async (req, res) => {
+    const neighborhoods = await storage.getNeighborhoodsByZone(req.params.zoneId);
+    res.json(neighborhoods);
+  });
+
+  app.get("/api/neighborhoods/:id", async (req, res) => {
+    const neighborhood = await storage.getNeighborhood(req.params.id);
+    if (!neighborhood) return res.status(404).json({ error: "Neighborhood not found" });
+    res.json(neighborhood);
+  });
+
+  app.post("/api/neighborhoods", async (req, res) => {
+    try {
+      // Verify zone exists
+      const zone = await storage.getDeliveryZone(req.body.zoneId);
+      if (!zone) {
+        return res.status(400).json({ error: "Zona nao encontrada" });
+      }
+      const neighborhood = await storage.createNeighborhood(req.body);
+      res.status(201).json(neighborhood);
+    } catch (error: any) {
+      console.error("Error creating neighborhood:", error);
+      res.status(500).json({ error: "Erro ao criar bairro" });
+    }
+  });
+
+  app.patch("/api/neighborhoods/:id", async (req, res) => {
+    try {
+      // If changing zone, verify new zone exists
+      if (req.body.zoneId) {
+        const zone = await storage.getDeliveryZone(req.body.zoneId);
+        if (!zone) {
+          return res.status(400).json({ error: "Zona nao encontrada" });
+        }
+      }
+      const neighborhood = await storage.updateNeighborhood(req.params.id, req.body);
+      if (!neighborhood) return res.status(404).json({ error: "Neighborhood not found" });
+      res.json(neighborhood);
+    } catch (error: any) {
+      console.error("Error updating neighborhood:", error);
+      res.status(500).json({ error: "Erro ao atualizar bairro" });
+    }
+  });
+
+  app.delete("/api/neighborhoods/:id", async (req, res) => {
+    try {
+      const deleted = await storage.deleteNeighborhood(req.params.id);
+      if (!deleted) return res.status(404).json({ error: "Neighborhood not found" });
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting neighborhood:", error);
+      res.status(500).json({ error: "Erro ao excluir bairro" });
+    }
+  });
+
+  // =============================================
+  // Order Delivery Fee Adjustment
+  // =============================================
+  app.patch("/api/orders/:id/delivery-fee", async (req, res) => {
+    try {
+      const { deliveryFee } = req.body;
+      if (deliveryFee === undefined || isNaN(parseFloat(deliveryFee))) {
+        return res.status(400).json({ error: "Taxa de entrega invalida" });
+      }
+
+      const order = await storage.getOrder(req.params.id);
+      if (!order) {
+        return res.status(404).json({ error: "Pedido nao encontrado" });
+      }
+
+      // Store original fee if not already stored
+      const originalFee = order.originalDeliveryFee || order.deliveryFee;
+      const newFee = parseFloat(deliveryFee).toFixed(2);
+      const newTotal = (parseFloat(order.subtotal) - parseFloat(order.discount || "0") + parseFloat(newFee)).toFixed(2);
+
+      const updatedOrder = await storage.updateOrder(req.params.id, {
+        deliveryFee: newFee,
+        originalDeliveryFee: originalFee,
+        deliveryFeeAdjusted: true,
+        deliveryFeeAdjustedAt: new Date(),
+        total: newTotal,
+      });
+
+      // Broadcast update via SSE
+      broadcastOrderUpdate('order_fee_updated', {
+        orderId: order.id,
+        userId: order.userId,
+        originalFee: parseFloat(originalFee),
+        newFee: parseFloat(newFee),
+        newTotal: parseFloat(newTotal),
+      });
+
+      res.json(updatedOrder);
+    } catch (error) {
+      console.error("Error updating delivery fee:", error);
+      res.status(500).json({ error: "Erro ao atualizar taxa de entrega" });
+    }
+  });
+
   return httpServer;
 }
