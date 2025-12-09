@@ -24,6 +24,8 @@ export const addresses = pgTable("addresses", {
   zipCode: text("zip_code").notNull(),
   notes: text("notes"),
   isDefault: boolean("is_default").default(true),
+  lat: decimal("lat", { precision: 10, scale: 7 }),
+  lng: decimal("lng", { precision: 10, scale: 7 }),
 });
 
 export const categories = pgTable("categories", {

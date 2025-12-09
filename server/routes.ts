@@ -4,6 +4,7 @@ import { storage } from "./storage";
 import bcrypt from "bcrypt";
 import multer from "multer";
 import { uploadFile, deleteFile, getStorageUrl } from "./supabase";
+import { geocodeAddress, buildAddressString, calculateHaversineDistance, calculateDeliveryFee } from "./geocoding";
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -1169,6 +1170,131 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error getting low stock suggestions:", error);
       res.status(500).json({ error: "Failed to get low stock suggestions" });
+    }
+  });
+
+  app.post("/api/geocode", async (req, res) => {
+    const { address, street, number, neighborhood, city, state } = req.body;
+    
+    try {
+      let fullAddress = address;
+      if (!fullAddress && street && number && city && state) {
+        fullAddress = buildAddressString(street, number, neighborhood || '', city, state);
+      }
+      
+      if (!fullAddress) {
+        return res.status(400).json({ error: "Address required" });
+      }
+      
+      const result = await geocodeAddress(fullAddress);
+      if (!result) {
+        return res.status(404).json({ error: "Address not found" });
+      }
+      
+      res.json(result);
+    } catch (error) {
+      console.error("Geocoding error:", error);
+      res.status(500).json({ error: "Failed to geocode address" });
+    }
+  });
+
+  app.post("/api/delivery/calculate", async (req, res) => {
+    const { addressId, lat, lng } = req.body;
+    
+    try {
+      const settings = await storage.getSettings();
+      if (!settings?.storeLat || !settings?.storeLng) {
+        return res.status(400).json({ error: "Store location not configured" });
+      }
+      
+      let customerLat: number, customerLng: number;
+      
+      if (addressId) {
+        const address = await storage.getAddress(addressId);
+        if (!address) {
+          return res.status(404).json({ error: "Address not found" });
+        }
+        
+        if (!address.lat || !address.lng) {
+          const fullAddress = buildAddressString(
+            address.street,
+            address.number,
+            address.neighborhood,
+            address.city,
+            address.state
+          );
+          const geocoded = await geocodeAddress(fullAddress);
+          if (!geocoded) {
+            return res.status(400).json({ error: "Could not geocode customer address" });
+          }
+          customerLat = geocoded.lat;
+          customerLng = geocoded.lng;
+          
+          await storage.updateAddress(addressId, { 
+            lat: customerLat.toString(), 
+            lng: customerLng.toString() 
+          });
+        } else {
+          customerLat = parseFloat(address.lat);
+          customerLng = parseFloat(address.lng);
+        }
+      } else if (lat !== undefined && lng !== undefined) {
+        customerLat = parseFloat(lat);
+        customerLng = parseFloat(lng);
+      } else {
+        return res.status(400).json({ error: "Address ID or coordinates required" });
+      }
+      
+      const storeLat = parseFloat(settings.storeLat);
+      const storeLng = parseFloat(settings.storeLng);
+      const ratePerKm = parseFloat(settings.deliveryRatePerKm || "1.25");
+      const minFee = parseFloat(settings.minDeliveryFee || "5.00");
+      const maxDistance = parseFloat(settings.maxDeliveryDistance || "15");
+      
+      const distance = calculateHaversineDistance(storeLat, storeLng, customerLat, customerLng);
+      const result = calculateDeliveryFee(distance, ratePerKm, minFee, maxDistance);
+      
+      res.json({
+        ...result,
+        customerLat,
+        customerLng,
+        storeLat,
+        storeLng,
+        ratePerKm,
+        minFee,
+      });
+    } catch (error) {
+      console.error("Delivery calculation error:", error);
+      res.status(500).json({ error: "Failed to calculate delivery fee" });
+    }
+  });
+
+  app.patch("/api/settings/geocode-store", async (req, res) => {
+    const { storeAddress } = req.body;
+    
+    if (!storeAddress) {
+      return res.status(400).json({ error: "Store address required" });
+    }
+    
+    try {
+      const result = await geocodeAddress(storeAddress + ", Brasil");
+      if (!result) {
+        return res.status(404).json({ error: "Address not found. Please try a more specific address." });
+      }
+      
+      const settings = await storage.updateSettings({
+        storeAddress,
+        storeLat: result.lat.toString(),
+        storeLng: result.lng.toString(),
+      });
+      
+      res.json({
+        ...settings,
+        geocodedAddress: result.displayName,
+      });
+    } catch (error) {
+      console.error("Store geocoding error:", error);
+      res.status(500).json({ error: "Failed to geocode store address" });
     }
   });
 
