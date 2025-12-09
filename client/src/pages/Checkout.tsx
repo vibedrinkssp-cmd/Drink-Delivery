@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useLocation } from 'wouter';
-import { MapPin, CreditCard, Banknote, QrCode, Truck, Tag, ArrowLeft, Loader2, Copy, Check } from 'lucide-react';
+import { MapPin, CreditCard, Banknote, QrCode, Truck, Tag, ArrowLeft, Loader2, Copy, Check, AlertTriangle } from 'lucide-react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -14,6 +14,7 @@ import { useAuth } from '@/lib/auth';
 import { apiRequest, queryClient } from '@/lib/queryClient';
 import type { Settings, PaymentMethod } from '@shared/schema';
 import { PAYMENT_METHOD_LABELS } from '@shared/schema';
+import { getDeliveryFeeByNeighborhood, getZoneByNeighborhood, DELIVERY_FEE_WARNING, DELIVERY_ZONES } from '@shared/delivery-zones';
 
 export default function Checkout() {
   const [, setLocation] = useLocation();
@@ -30,10 +31,16 @@ export default function Checkout() {
     queryKey: ['/api/settings'],
   });
 
+  const neighborhoodFee = address?.neighborhood ? getDeliveryFeeByNeighborhood(address.neighborhood) : null;
+  const zoneInfo = address?.neighborhood ? getZoneByNeighborhood(address.neighborhood) : null;
+  
   const deliveryRate = Number(settings?.deliveryRatePerKm ?? 1.25);
   const minDeliveryFee = Number(settings?.minDeliveryFee ?? 5);
   const estimatedDistance = 5;
-  const deliveryFee = Math.max(estimatedDistance * deliveryRate, minDeliveryFee);
+  const fallbackDeliveryFee = Math.max(estimatedDistance * deliveryRate, minDeliveryFee);
+  
+  const deliveryFee = neighborhoodFee ?? fallbackDeliveryFee;
+  const isUnlistedNeighborhood = neighborhoodFee === null;
   
   const totalAfterDiscount = subtotal - comboDiscount;
   const total = totalAfterDiscount + deliveryFee;
@@ -135,6 +142,25 @@ export default function Checkout() {
                   {address.notes && (
                     <p className="text-yellow text-sm mt-2">Obs: {address.notes}</p>
                   )}
+                  {zoneInfo && (
+                    <p className="text-primary text-sm mt-2 font-medium">
+                      Zona de entrega: {zoneInfo.name} - {formatPrice(zoneInfo.fee)}
+                    </p>
+                  )}
+                  {isUnlistedNeighborhood && (
+                    <p className="text-muted-foreground text-sm mt-2">
+                      Taxa estimada (bairro nao cadastrado)
+                    </p>
+                  )}
+                </div>
+                
+                <div className="flex items-start gap-2 p-3 mt-3 bg-yellow/10 border border-yellow/30 rounded-lg">
+                  <AlertTriangle className="h-4 w-4 text-yellow shrink-0 mt-0.5" />
+                  <p className="text-xs text-yellow">
+                    {isUnlistedNeighborhood 
+                      ? "O bairro informado nao esta em nossa lista. A taxa de entrega sera confirmada pela nossa equipe antes do envio."
+                      : DELIVERY_FEE_WARNING}
+                  </p>
                 </div>
               </CardContent>
             </Card>

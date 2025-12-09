@@ -6,7 +6,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { 
   ArrowLeft, User, MapPin, Package, Clock, Truck, CheckCircle, XCircle, 
-  ChefHat, AlertCircle, Edit2, Trash2, Plus, Save, X, Phone, LogOut
+  ChefHat, AlertCircle, Edit2, Trash2, Plus, Save, X, Phone, LogOut, AlertTriangle
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -24,11 +24,13 @@ import {
 import {
   Form, FormControl, FormField, FormItem, FormLabel, FormMessage
 } from '@/components/ui/form';
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/lib/auth';
 import { apiRequest, queryClient } from '@/lib/queryClient';
 import type { Order, OrderItem, Address } from '@shared/schema';
 import { ORDER_STATUS_LABELS, PAYMENT_METHOD_LABELS, type OrderStatus, type PaymentMethod } from '@shared/schema';
+import { NEIGHBORHOODS, DELIVERY_ZONES, DELIVERY_FEE_WARNING, type DeliveryZone } from '@shared/delivery-zones';
 
 interface OrderWithItems extends Order {
   items: OrderItem[];
@@ -539,44 +541,66 @@ export default function Profile() {
                           </FormItem>
                         )}
                       />
-                      <div className="grid grid-cols-2 gap-4">
-                        <FormField
-                          control={addressForm.control}
-                          name="neighborhood"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel className="text-foreground">Bairro</FormLabel>
+                      <FormField
+                        control={addressForm.control}
+                        name="neighborhood"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="text-foreground">Bairro</FormLabel>
+                            <Select value={field.value} onValueChange={field.onChange}>
                               <FormControl>
-                                <Input
-                                  {...field}
-                                  className="bg-secondary/50 border-primary/20"
-                                  placeholder="Bairro"
-                                  data-testid="input-neighborhood"
-                                />
+                                <SelectTrigger className="bg-secondary/50 border-primary/20" data-testid="select-neighborhood">
+                                  <SelectValue placeholder="Selecione o bairro" />
+                                </SelectTrigger>
                               </FormControl>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-                        <FormField
-                          control={addressForm.control}
-                          name="city"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel className="text-foreground">Cidade</FormLabel>
-                              <FormControl>
-                                <Input
-                                  {...field}
-                                  className="bg-secondary/50 border-primary/20"
-                                  placeholder="Cidade"
-                                  data-testid="input-city"
-                                />
-                              </FormControl>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
+                              <SelectContent className="bg-card border-primary/20 max-h-[300px]">
+                                {(['S', 'A', 'B', 'C', 'D', 'E'] as DeliveryZone[]).map((zone) => {
+                                  const zoneInfo = DELIVERY_ZONES[zone];
+                                  const zoneNeighborhoods = NEIGHBORHOODS.filter(n => n.zone === zone);
+                                  if (zoneNeighborhoods.length === 0) return null;
+                                  return (
+                                    <SelectGroup key={zone}>
+                                      <SelectLabel className="text-primary font-semibold">
+                                        {zoneInfo.name} - R$ {zoneInfo.fee.toFixed(2).replace('.', ',')}
+                                      </SelectLabel>
+                                      {zoneNeighborhoods.map((n) => (
+                                        <SelectItem key={n.name} value={n.name} className="text-foreground">
+                                          {n.name}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectGroup>
+                                  );
+                                })}
+                              </SelectContent>
+                            </Select>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      
+                      <div className="flex items-start gap-2 p-3 bg-yellow/10 border border-yellow/30 rounded-lg">
+                        <AlertTriangle className="h-4 w-4 text-yellow shrink-0 mt-0.5" />
+                        <p className="text-xs text-yellow">{DELIVERY_FEE_WARNING}</p>
                       </div>
+
+                      <FormField
+                        control={addressForm.control}
+                        name="city"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="text-foreground">Cidade</FormLabel>
+                            <FormControl>
+                              <Input
+                                {...field}
+                                className="bg-secondary/50 border-primary/20"
+                                placeholder="Cidade"
+                                data-testid="input-city"
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
                       <div className="grid grid-cols-2 gap-4">
                         <FormField
                           control={addressForm.control}

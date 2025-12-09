@@ -1,15 +1,17 @@
 import { useState } from 'react';
 import { useLocation } from 'wouter';
-import { Phone, User, MapPin, ArrowRight, Loader2, Lock } from 'lucide-react';
+import { Phone, User, MapPin, ArrowRight, Loader2, Lock, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/lib/auth';
 import { apiRequest } from '@/lib/queryClient';
 import logoImage from '@assets/VIBE_DRINKS_1765072715257.png';
+import { NEIGHBORHOODS, DELIVERY_ZONES, DELIVERY_FEE_WARNING, type DeliveryZone } from '@shared/delivery-zones';
 
 type Step = 'phone' | 'password' | 'register';
 
@@ -368,13 +370,35 @@ export default function Login() {
                   />
                 </div>
 
-                <Input
-                  placeholder="Bairro"
-                  value={neighborhood}
-                  onChange={(e) => setNeighborhood(e.target.value)}
-                  className="bg-secondary border-primary/30 text-foreground"
-                  data-testid="input-neighborhood"
-                />
+                <Select value={neighborhood} onValueChange={setNeighborhood}>
+                  <SelectTrigger className="bg-secondary border-primary/30 text-foreground" data-testid="select-neighborhood">
+                    <SelectValue placeholder="Selecione o bairro" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-card border-primary/20 max-h-[300px]">
+                    {(['S', 'A', 'B', 'C', 'D', 'E'] as DeliveryZone[]).map((zone) => {
+                      const zoneInfo = DELIVERY_ZONES[zone];
+                      const zoneNeighborhoods = NEIGHBORHOODS.filter(n => n.zone === zone);
+                      if (zoneNeighborhoods.length === 0) return null;
+                      return (
+                        <SelectGroup key={zone}>
+                          <SelectLabel className="text-primary font-semibold">
+                            {zoneInfo.name} - R$ {zoneInfo.fee.toFixed(2).replace('.', ',')}
+                          </SelectLabel>
+                          {zoneNeighborhoods.map((n) => (
+                            <SelectItem key={n.name} value={n.name} className="text-foreground">
+                              {n.name}
+                            </SelectItem>
+                          ))}
+                        </SelectGroup>
+                      );
+                    })}
+                  </SelectContent>
+                </Select>
+                
+                <div className="flex items-start gap-2 p-3 bg-yellow/10 border border-yellow/30 rounded-lg">
+                  <AlertTriangle className="h-4 w-4 text-yellow shrink-0 mt-0.5" />
+                  <p className="text-xs text-yellow">{DELIVERY_FEE_WARNING}</p>
+                </div>
 
                 <div className="grid grid-cols-4 gap-2">
                   <Input
