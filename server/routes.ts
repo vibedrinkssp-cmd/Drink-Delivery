@@ -4,6 +4,7 @@ import { storage } from "./storage";
 import bcrypt from "bcrypt";
 import multer from "multer";
 import { uploadFile, deleteFile, getStorageUrl } from "./supabase";
+import { buscarEnderecoPorCEP } from "./utils/delivery";
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -372,6 +373,22 @@ export async function registerRoutes(
     const deleted = await storage.deleteAddress(req.params.id);
     if (!deleted) return res.status(404).json({ error: "Address not found" });
     res.status(204).send();
+  });
+
+  app.get("/api/cep/:cep", async (req, res) => {
+    const { cep } = req.params;
+    const cleanCep = cep.replace(/\D/g, '');
+    
+    if (cleanCep.length !== 8) {
+      return res.status(400).json({ error: "CEP deve ter 8 digitos" });
+    }
+    
+    const data = await buscarEnderecoPorCEP(cleanCep);
+    if (!data) {
+      return res.status(404).json({ error: "CEP nao encontrado" });
+    }
+    
+    res.json(data);
   });
 
   app.get("/api/categories", async (_req, res) => {

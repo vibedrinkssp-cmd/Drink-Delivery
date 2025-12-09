@@ -50,6 +50,53 @@ export default function Checkout() {
   const [isCalculatingDelivery, setIsCalculatingDelivery] = useState(false);
   const [deliveryError, setDeliveryError] = useState<string | null>(null);
 
+  // CEP lookup state
+  const [isSearchingCep, setIsSearchingCep] = useState(false);
+  const [cepError, setCepError] = useState<string | null>(null);
+
+  // Search address by CEP using backend API
+  const searchAddressByCep = async (cep: string) => {
+    const cleanCep = cep.replace(/\D/g, '');
+    if (cleanCep.length !== 8) {
+      setCepError('CEP deve ter 8 digitos');
+      return;
+    }
+
+    setIsSearchingCep(true);
+    setCepError(null);
+
+    try {
+      const response = await fetch(`/api/cep/${cleanCep}`);
+      const data = await response.json();
+
+      if (!response.ok) {
+        setCepError(data.error || 'CEP nao encontrado');
+        toast({ title: data.error || 'CEP nao encontrado', variant: 'destructive' });
+      } else {
+        setStreet(data.logradouro || '');
+        setNeighborhood(data.bairro || '');
+        setCity(data.localidade || '');
+        setState(data.uf || '');
+        setCepError(null);
+        toast({ title: 'Endereco encontrado!' });
+      }
+    } catch (error) {
+      setCepError('Erro ao buscar CEP');
+      toast({ title: 'Erro ao buscar CEP', variant: 'destructive' });
+    } finally {
+      setIsSearchingCep(false);
+    }
+  };
+
+  // Auto-search when CEP has 8 digits
+  const handleCepChange = (value: string) => {
+    const cleanValue = value.replace(/\D/g, '');
+    setZipCode(cleanValue);
+    if (cleanValue.length === 8) {
+      searchAddressByCep(cleanValue);
+    }
+  };
+
   const { data: settings } = useQuery<Settings>({
     queryKey: ['/api/settings'],
   });
@@ -254,14 +301,34 @@ export default function Checkout() {
                       Adicione seu endereco de entrega para continuar
                     </p>
                     
-                    <div className="grid grid-cols-3 gap-2">
+                    <div className="flex gap-2">
                       <Input
                         placeholder="CEP"
                         value={zipCode}
-                        onChange={(e) => setZipCode(e.target.value)}
-                        className="bg-secondary border-primary/30 text-foreground"
+                        onChange={(e) => handleCepChange(e.target.value)}
+                        className="bg-secondary border-primary/30 text-foreground flex-1"
+                        maxLength={9}
                         data-testid="input-checkout-zipcode"
                       />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => searchAddressByCep(zipCode)}
+                        disabled={isSearchingCep || zipCode.length !== 8}
+                        className="border-primary/30"
+                        data-testid="button-search-cep"
+                      >
+                        {isSearchingCep ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          'Buscar'
+                        )}
+                      </Button>
+                    </div>
+                    {cepError && (
+                      <p className="text-destructive text-sm">{cepError}</p>
+                    )}
+                    <div className="grid grid-cols-2 gap-2">
                       <Input
                         placeholder="Estado"
                         value={state}
