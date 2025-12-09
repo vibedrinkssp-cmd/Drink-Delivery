@@ -1,8 +1,11 @@
 import { useState } from 'react';
-import { ChevronDown, ChevronUp, Clock, Package, Truck, MapPin, Phone, User as UserIcon, MessageCircle, Bell } from 'lucide-react';
+import { ChevronDown, ChevronUp, Clock, Package, Truck, MapPin, Phone, User as UserIcon, MessageCircle, Bell, Edit2 } from 'lucide-react';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import type { Order, OrderItem, Address, Motoboy } from '@shared/schema';
 import { ORDER_STATUS_LABELS, PAYMENT_METHOD_LABELS, ORDER_TYPE_LABELS, type OrderStatus, type PaymentMethod, type OrderType } from '@shared/schema';
@@ -46,6 +49,8 @@ interface ExpandableOrderCardProps {
   elapsedTimeDate?: Date | string | null;
   onOpenMaps?: (address: Address) => void;
   onOpenWhatsApp?: (phone: string) => void;
+  onEditDeliveryFee?: (orderId: string, newFee: number) => void;
+  isEditingDeliveryFee?: boolean;
 }
 
 const STATUS_COLORS: Record<OrderStatus, string> = {
@@ -108,8 +113,12 @@ export function ExpandableOrderCard({
   elapsedTimeDate,
   onOpenMaps,
   onOpenWhatsApp,
+  onEditDeliveryFee,
+  isEditingDeliveryFee = false,
 }: ExpandableOrderCardProps) {
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
+  const [showFeeDialog, setShowFeeDialog] = useState(false);
+  const [newDeliveryFee, setNewDeliveryFee] = useState<string>(String(order.deliveryFee || 0));
   
   const status = order.status as OrderStatus;
   const paymentMethod = order.paymentMethod as PaymentMethod;
@@ -229,9 +238,27 @@ export function ExpandableOrderCard({
                   <span className="ml-2 text-green-400">-{formatCurrency(order.discount || 0)}</span>
                 </div>
               )}
-              <div>
+              <div className="flex items-center gap-1">
                 <span className="text-muted-foreground">Taxa Entrega:</span>
                 <span className="ml-2 text-foreground">{formatCurrency(order.deliveryFee)}</span>
+                {order.deliveryFeeAdjusted && (
+                  <Badge variant="outline" className="text-xs ml-1 text-yellow-400 border-yellow-400/50">Ajustada</Badge>
+                )}
+                {variant === 'admin' && onEditDeliveryFee && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6 ml-1"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setNewDeliveryFee(String(order.deliveryFee || 0));
+                      setShowFeeDialog(true);
+                    }}
+                    data-testid={`button-edit-fee-${order.id}`}
+                  >
+                    <Edit2 className="h-3 w-3" />
+                  </Button>
+                )}
               </div>
               <div>
                 <span className="text-muted-foreground">Pagamento:</span>
@@ -365,6 +392,60 @@ export function ExpandableOrderCard({
           </CardContent>
         </CollapsibleContent>
       </Collapsible>
+
+      <Dialog open={showFeeDialog} onOpenChange={setShowFeeDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Editar Taxa de Entrega</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="deliveryFee">Nova taxa de entrega (R$)</Label>
+              <Input
+                id="deliveryFee"
+                type="number"
+                step="0.01"
+                min="0"
+                value={newDeliveryFee}
+                onChange={(e) => setNewDeliveryFee(e.target.value)}
+                placeholder="0.00"
+                data-testid="input-delivery-fee"
+              />
+            </div>
+            {order.originalDeliveryFee !== null && order.originalDeliveryFee !== undefined && (
+              <p className="text-sm text-muted-foreground">
+                Taxa original: {formatCurrency(order.originalDeliveryFee)}
+              </p>
+            )}
+            <p className="text-sm text-muted-foreground">
+              Novo total: {formatCurrency(
+                Number(order.subtotal) - Number(order.discount || 0) + Number(newDeliveryFee || 0)
+              )}
+            </p>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowFeeDialog(false)}
+              data-testid="button-cancel-fee"
+            >
+              Cancelar
+            </Button>
+            <Button
+              onClick={() => {
+                if (onEditDeliveryFee) {
+                  onEditDeliveryFee(order.id, parseFloat(newDeliveryFee) || 0);
+                  setShowFeeDialog(false);
+                }
+              }}
+              disabled={isEditingDeliveryFee}
+              data-testid="button-save-fee"
+            >
+              {isEditingDeliveryFee ? 'Salvando...' : 'Salvar'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }

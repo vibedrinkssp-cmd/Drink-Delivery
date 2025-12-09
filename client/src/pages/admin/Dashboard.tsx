@@ -202,6 +202,23 @@ function OrdersTab() {
     },
   });
 
+  const editDeliveryFeeMutation = useMutation({
+    mutationFn: async ({ orderId, newFee }: { orderId: string; newFee: number }) => {
+      return apiRequest('PATCH', `/api/orders/${orderId}/delivery-fee`, { deliveryFee: newFee });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/orders'] });
+      toast({ title: 'Taxa de entrega atualizada!' });
+    },
+    onError: () => {
+      toast({ title: 'Erro ao atualizar taxa de entrega', variant: 'destructive' });
+    },
+  });
+
+  const handleEditDeliveryFee = (orderId: string, newFee: number) => {
+    editDeliveryFeeMutation.mutate({ orderId, newFee });
+  };
+
   const filteredOrders = ordersWithDetails.filter(order => {
     const matchesStatus = statusFilter === 'all' || order.status === statusFilter;
     const searchLower = searchTerm.toLowerCase().trim();
@@ -330,6 +347,8 @@ function OrdersTab() {
                 defaultExpanded={false}
                 showActions={true}
                 actions={renderOrderActions(order)}
+                onEditDeliveryFee={handleEditDeliveryFee}
+                isEditingDeliveryFee={editDeliveryFeeMutation.isPending}
               />
             ))}
           </div>
