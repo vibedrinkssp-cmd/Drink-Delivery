@@ -5,6 +5,7 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Separator } from '@/components/ui/separator';
@@ -12,19 +13,29 @@ import { useToast } from '@/hooks/use-toast';
 import { useCart } from '@/lib/cart';
 import { useAuth } from '@/lib/auth';
 import { apiRequest, queryClient } from '@/lib/queryClient';
-import type { Settings, PaymentMethod } from '@shared/schema';
+import type { Settings, PaymentMethod, Address } from '@shared/schema';
 import { PAYMENT_METHOD_LABELS } from '@shared/schema';
 
 export default function Checkout() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const { items, subtotal, comboDiscount, hasCombo, clearCart } = useCart();
-  const { user, address, isAuthenticated } = useAuth();
+  const { user, address, isAuthenticated, setAddress } = useAuth();
 
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('pix');
   const [needsChange, setNeedsChange] = useState(false);
   const [changeFor, setChangeFor] = useState('');
   const [pixCopied, setPixCopied] = useState(false);
+
+  // Address form state for users without an address
+  const [street, setStreet] = useState('');
+  const [number, setNumber] = useState('');
+  const [complement, setComplement] = useState('');
+  const [neighborhood, setNeighborhood] = useState('');
+  const [city, setCity] = useState('');
+  const [state, setState] = useState('');
+  const [zipCode, setZipCode] = useState('');
+  const [notes, setNotes] = useState('');
 
   const { data: settings } = useQuery<Settings>({
     queryKey: ['/api/settings'],
@@ -71,6 +82,42 @@ export default function Checkout() {
     },
   });
 
+  const createAddressMutation = useMutation({
+    mutationFn: async (): Promise<Address> => {
+      const addressData = {
+        userId: user?.id,
+        street,
+        number,
+        complement: complement || null,
+        neighborhood,
+        city,
+        state,
+        zipCode,
+        notes: notes || null,
+        isDefault: true,
+      };
+      const response = await apiRequest('POST', '/api/addresses', addressData);
+      const data = await response.json();
+      return data as Address;
+    },
+    onSuccess: (data: Address) => {
+      setAddress(data);
+      queryClient.invalidateQueries({ queryKey: ['/api/addresses'] });
+      toast({ title: 'Endereco salvo!', description: 'Agora voce pode finalizar seu pedido' });
+    },
+    onError: () => {
+      toast({ title: 'Erro ao salvar endereco', variant: 'destructive' });
+    },
+  });
+
+  const handleSaveAddress = () => {
+    if (!street || !number || !neighborhood || !city || !state || !zipCode) {
+      toast({ title: 'Endereco incompleto', description: 'Preencha todos os campos obrigatorios', variant: 'destructive' });
+      return;
+    }
+    createAddressMutation.mutate();
+  };
+
   const copyPixKey = () => {
     if (settings?.pixKey) {
       navigator.clipboard.writeText(settings.pixKey);
@@ -88,20 +135,23 @@ export default function Checkout() {
   };
 
   useEffect(() => {
-    if (!isAuthenticated || !address) {
+    if (!isAuthenticated) {
       setLocation('/login?redirect=/checkout');
     } else if (items.length === 0) {
       setLocation('/');
     }
-  }, [isAuthenticated, address, items.length, setLocation]);
+  }, [isAuthenticated, items.length, setLocation]);
 
-  if (!isAuthenticated || !address || items.length === 0) {
+  if (!isAuthenticated || items.length === 0) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
     );
   }
+
+  // Show address form if user is authenticated but has no address
+  const needsAddress = !address;
 
   return (
     <div className="min-h-screen bg-background py-8 px-4">
@@ -128,20 +178,107 @@ export default function Checkout() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="bg-secondary/50 p-4 rounded-lg border border-primary/10">
-                  <p className="font-medium text-foreground">{user?.name}</p>
-                  <p className="text-muted-foreground text-sm mt-1">
-                    {address.street}, {address.number}
-                    {address.complement && ` - ${address.complement}`}
-                  </p>
-                  <p className="text-muted-foreground text-sm">
-                    {address.neighborhood}, {address.city} - {address.state}
-                  </p>
-                  <p className="text-muted-foreground text-sm">CEP: {address.zipCode}</p>
-                  {address.notes && (
-                    <p className="text-yellow text-sm mt-2">Obs: {address.notes}</p>
-                  )}
-                </div>
+                {needsAddress ? (
+                  <div className="space-y-4">
+                    <p className="text-muted-foreground text-sm mb-4">
+                      Adicione seu endereco de entrega para continuar
+                    </p>
+                    
+                    <div className="grid grid-cols-3 gap-2">
+                      <Input
+                        placeholder="CEP"
+                        value={zipCode}
+                        onChange={(e) => setZipCode(e.target.value)}
+                        className="bg-secondary border-primary/30 text-foreground"
+                        data-testid="input-checkout-zipcode"
+                      />
+                      <Input
+                        placeholder="Estado"
+                        value={state}
+                        onChange={(e) => setState(e.target.value)}
+                        className="bg-secondary border-primary/30 text-foreground"
+                        data-testid="input-checkout-state"
+                      />
+                      <Input
+                        placeholder="Cidade"
+                        value={city}
+                        onChange={(e) => setCity(e.target.value)}
+                        className="bg-secondary border-primary/30 text-foreground"
+                        data-testid="input-checkout-city"
+                      />
+                    </div>
+
+                    <Input
+                      placeholder="Bairro"
+                      value={neighborhood}
+                      onChange={(e) => setNeighborhood(e.target.value)}
+                      className="bg-secondary border-primary/30 text-foreground"
+                      data-testid="input-checkout-neighborhood"
+                    />
+
+                    <div className="grid grid-cols-4 gap-2">
+                      <Input
+                        placeholder="Rua"
+                        value={street}
+                        onChange={(e) => setStreet(e.target.value)}
+                        className="col-span-3 bg-secondary border-primary/30 text-foreground"
+                        data-testid="input-checkout-street"
+                      />
+                      <Input
+                        placeholder="Nro"
+                        value={number}
+                        onChange={(e) => setNumber(e.target.value)}
+                        className="bg-secondary border-primary/30 text-foreground"
+                        data-testid="input-checkout-number"
+                      />
+                    </div>
+
+                    <Input
+                      placeholder="Complemento (opcional)"
+                      value={complement}
+                      onChange={(e) => setComplement(e.target.value)}
+                      className="bg-secondary border-primary/30 text-foreground"
+                      data-testid="input-checkout-complement"
+                    />
+
+                    <Textarea
+                      placeholder="Observacoes para entrega (ex: portao azul, casa dos fundos...)"
+                      value={notes}
+                      onChange={(e) => setNotes(e.target.value)}
+                      className="bg-secondary border-primary/30 text-foreground resize-none"
+                      rows={2}
+                      data-testid="input-checkout-notes"
+                    />
+
+                    <Button
+                      className="w-full bg-primary text-primary-foreground"
+                      onClick={handleSaveAddress}
+                      disabled={createAddressMutation.isPending}
+                      data-testid="button-save-address"
+                    >
+                      {createAddressMutation.isPending ? (
+                        <Loader2 className="h-5 w-5 animate-spin" />
+                      ) : (
+                        'Salvar Endereco'
+                      )}
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="bg-secondary/50 p-4 rounded-lg border border-primary/10">
+                    <p className="font-medium text-foreground">{user?.name}</p>
+                    <p className="text-muted-foreground text-sm mt-1">
+                      {address.street}, {address.number}
+                      {address.complement && ` - ${address.complement}`}
+                    </p>
+                    <p className="text-muted-foreground text-sm">
+                      {address.neighborhood}, {address.city} - {address.state}
+                    </p>
+                    <p className="text-muted-foreground text-sm">CEP: {address.zipCode}</p>
+                    {address.notes && (
+                      <p className="text-yellow text-sm mt-2">Obs: {address.notes}</p>
+                    )}
+                  </div>
+                )}
               </CardContent>
             </Card>
 
@@ -311,11 +448,13 @@ export default function Checkout() {
                 <Button
                   className="w-full bg-primary text-primary-foreground font-semibold py-6"
                   onClick={() => createOrderMutation.mutate()}
-                  disabled={createOrderMutation.isPending}
+                  disabled={createOrderMutation.isPending || needsAddress}
                   data-testid="button-place-order"
                 >
                   {createOrderMutation.isPending ? (
                     <Loader2 className="h-5 w-5 animate-spin" />
+                  ) : needsAddress ? (
+                    'Adicione um endereco primeiro'
                   ) : (
                     `Confirmar Pedido - ${formatPrice(total)}`
                   )}
