@@ -2087,6 +2087,7 @@ function ProdutosTab() {
             </form>
           </DialogContent>
         </Dialog>
+        </div>
       </div>
 
       <div className="flex flex-col sm:flex-row gap-3">

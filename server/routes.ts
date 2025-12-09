@@ -499,7 +499,7 @@ export async function registerRoutes(
             // Create new category
             const newCategory = await storage.createCategory({
               name: categoryName,
-              icon: 'box',
+              iconUrl: null,
               isActive: true,
             });
             categoryMap.set(categoryName.toLowerCase(), newCategory.id);
@@ -519,7 +519,7 @@ export async function registerRoutes(
           await storage.createProduct({
             name: productName,
             description: null,
-            categoryId,
+            categoryId: categoryId || undefined,
             costPrice: costPrice.toString(),
             salePrice: salePrice.toString(),
             profitMargin: profitMargin.toFixed(2),
