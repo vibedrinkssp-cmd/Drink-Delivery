@@ -69,7 +69,7 @@ import { useNotificationSound } from '@/hooks/use-notification-sound';
 import { apiRequest, queryClient } from '@/lib/queryClient';
 import { ProductImageUploader } from '@/components/ProductImageUploader';
 import { ExpandableOrderCard } from '@/components/ExpandableOrderCard';
-import type { Order, Product, Category, Motoboy, User, Settings as SettingsType, OrderItem } from '@shared/schema';
+import type { Order, Product, Category, Motoboy, User, Settings as SettingsType, OrderItem, Address } from '@shared/schema';
 import { ORDER_STATUS_LABELS, PAYMENT_METHOD_LABELS, ORDER_TYPE_LABELS, type OrderStatus, type PaymentMethod, type OrderType } from '@shared/schema';
 
 const tabs = [
@@ -1519,9 +1519,37 @@ function EstoqueTab() {
 
 function ClientesTab() {
   const { toast } = useToast();
+  const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'blocked'>('all');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [selectedCustomer, setSelectedCustomer] = useState<User | null>(null);
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const CUSTOMERS_PER_PAGE = 20;
 
-  const { data: users = [] } = useQuery<User[]>({
+  const { data: users = [], isLoading } = useQuery<User[]>({
     queryKey: ['/api/users'],
+  });
+
+  const { data: customerAddresses = [] } = useQuery<Address[]>({
+    queryKey: ['/api/addresses', selectedCustomer?.id],
+    queryFn: async () => {
+      if (!selectedCustomer?.id) return [];
+      const res = await fetch(`/api/addresses/${selectedCustomer.id}`);
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!selectedCustomer?.id && detailsOpen,
+  });
+
+  const { data: customerOrders = [] } = useQuery<Order[]>({
+    queryKey: ['/api/orders/user', selectedCustomer?.id],
+    queryFn: async () => {
+      if (!selectedCustomer?.id) return [];
+      const res = await fetch(`/api/orders/user/${selectedCustomer.id}`);
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!selectedCustomer?.id && detailsOpen,
   });
 
   const toggleBlockMutation = useMutation({
@@ -1549,72 +1577,331 @@ function ClientesTab() {
 
   const customers = users.filter(u => u.role === 'customer');
 
+  const filteredCustomers = customers.filter(customer => {
+    const searchLower = searchTerm.toLowerCase().trim();
+    const matchesSearch = searchLower === '' ||
+      customer.name.toLowerCase().includes(searchLower) ||
+      customer.whatsapp.toLowerCase().includes(searchLower);
+    
+    const matchesStatus = statusFilter === 'all' ||
+      (statusFilter === 'active' && !customer.isBlocked) ||
+      (statusFilter === 'blocked' && customer.isBlocked);
+    
+    return matchesSearch && matchesStatus;
+  });
+
+  const totalPages = Math.ceil(filteredCustomers.length / CUSTOMERS_PER_PAGE);
+  const paginatedCustomers = filteredCustomers.slice(
+    (currentPage - 1) * CUSTOMERS_PER_PAGE,
+    currentPage * CUSTOMERS_PER_PAGE
+  );
+
+  const handleSearchChange = (value: string) => {
+    setSearchTerm(value);
+    setCurrentPage(1);
+  };
+
+  const handleStatusFilterChange = (value: string) => {
+    setStatusFilter(value as 'all' | 'active' | 'blocked');
+    setCurrentPage(1);
+  };
+
+  const openCustomerDetails = (customer: User) => {
+    setSelectedCustomer(customer);
+    setDetailsOpen(true);
+  };
+
+  const customerTotalSpent = customerOrders
+    .filter(o => o.status === 'delivered')
+    .reduce((sum, o) => sum + Number(o.total), 0);
+
   return (
     <div className="space-y-6">
-      <h2 className="font-serif text-3xl text-primary">Clientes</h2>
-
-      <Card>
-        <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="border-b border-border/30">
-                <tr>
-                  <th className="text-left p-4 text-muted-foreground font-medium">Nome</th>
-                  <th className="text-left p-4 text-muted-foreground font-medium">WhatsApp</th>
-                  <th className="text-left p-4 text-muted-foreground font-medium">Cadastro</th>
-                  <th className="text-left p-4 text-muted-foreground font-medium">Status</th>
-                  <th className="text-right p-4 text-muted-foreground font-medium">Acoes</th>
-                </tr>
-              </thead>
-              <tbody>
-                {customers.map(user => (
-                  <tr key={user.id} className="border-b border-border/20 last:border-0" data-testid={`row-user-${user.id}`}>
-                    <td className="p-4 font-medium">{user.name}</td>
-                    <td className="p-4 text-muted-foreground">{user.whatsapp}</td>
-                    <td className="p-4 text-muted-foreground">{formatDate(user.createdAt)}</td>
-                    <td className="p-4">
-                      <Badge className={user.isBlocked ? 'bg-red-500/20 text-red-300' : 'bg-green-500/20 text-green-300'}>
-                        {user.isBlocked ? 'Bloqueado' : 'Ativo'}
-                      </Badge>
-                    </td>
-                    <td className="p-4 text-right">
-                      <div className="flex items-center justify-end gap-2">
-                        <Button 
-                          size="sm" 
-                          variant={user.isBlocked ? 'default' : 'outline'}
-                          onClick={() => toggleBlockMutation.mutate({ userId: user.id, isBlocked: !user.isBlocked })}
-                          data-testid={`button-toggle-block-${user.id}`}
-                        >
-                          {user.isBlocked ? 'Desbloquear' : 'Bloquear'}
-                        </Button>
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          className="text-muted-foreground/50 hover:text-destructive"
-                          onClick={() => {
-                            if (confirm('Tem certeza que deseja excluir este cliente? Esta acao nao pode ser desfeita.')) {
-                              deleteMutation.mutate(user.id);
-                            }
-                          }}
-                          disabled={deleteMutation.isPending}
-                          data-testid={`button-delete-user-${user.id}`}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <h2 className="font-serif text-3xl text-primary">Clientes</h2>
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Buscar por nome ou WhatsApp..."
+              value={searchTerm}
+              onChange={(e) => handleSearchChange(e.target.value)}
+              className="pl-9 w-64 bg-secondary border-primary/30"
+              data-testid="input-search-customers"
+            />
           </div>
-          {customers.length === 0 && (
-            <div className="py-12 text-center text-muted-foreground">
-              Nenhum cliente cadastrado
+          <Select value={statusFilter} onValueChange={handleStatusFilterChange}>
+            <SelectTrigger className="w-40 bg-secondary border-primary/30" data-testid="select-status-filter-customers">
+              <SelectValue placeholder="Filtrar status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos</SelectItem>
+              <SelectItem value="active">Ativos</SelectItem>
+              <SelectItem value="blocked">Bloqueados</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      {isLoading ? (
+        <div className="grid gap-4">
+          {[1, 2, 3].map(i => (
+            <Card key={i} className="animate-pulse">
+              <CardContent className="h-16" />
+            </Card>
+          ))}
+        </div>
+      ) : filteredCustomers.length === 0 ? (
+        <Card>
+          <CardContent className="py-12 text-center text-muted-foreground">
+            {searchTerm || statusFilter !== 'all' ? 'Nenhum cliente encontrado com os filtros aplicados' : 'Nenhum cliente cadastrado'}
+          </CardContent>
+        </Card>
+      ) : (
+        <>
+          <div className="text-sm text-muted-foreground">
+            Mostrando {(currentPage - 1) * CUSTOMERS_PER_PAGE + 1} - {Math.min(currentPage * CUSTOMERS_PER_PAGE, filteredCustomers.length)} de {filteredCustomers.length} clientes
+          </div>
+          <Card>
+            <CardContent className="p-0">
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="border-b border-border/30">
+                    <tr>
+                      <th className="text-left p-4 text-muted-foreground font-medium">Nome</th>
+                      <th className="text-left p-4 text-muted-foreground font-medium">WhatsApp</th>
+                      <th className="text-left p-4 text-muted-foreground font-medium">Cadastro</th>
+                      <th className="text-left p-4 text-muted-foreground font-medium">Status</th>
+                      <th className="text-right p-4 text-muted-foreground font-medium">Acoes</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {paginatedCustomers.map(user => (
+                      <tr key={user.id} className="border-b border-border/20 last:border-0" data-testid={`row-user-${user.id}`}>
+                        <td className="p-4 font-medium">{user.name}</td>
+                        <td className="p-4 text-muted-foreground">{user.whatsapp}</td>
+                        <td className="p-4 text-muted-foreground">{formatDate(user.createdAt)}</td>
+                        <td className="p-4">
+                          <Badge className={user.isBlocked ? 'bg-red-500/20 text-red-300' : 'bg-green-500/20 text-green-300'}>
+                            {user.isBlocked ? 'Bloqueado' : 'Ativo'}
+                          </Badge>
+                        </td>
+                        <td className="p-4 text-right">
+                          <div className="flex items-center justify-end gap-2">
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              onClick={() => openCustomerDetails(user)}
+                              data-testid={`button-view-customer-${user.id}`}
+                            >
+                              <Eye className="h-4 w-4" />
+                            </Button>
+                            <Button 
+                              size="sm" 
+                              variant={user.isBlocked ? 'default' : 'outline'}
+                              onClick={() => toggleBlockMutation.mutate({ userId: user.id, isBlocked: !user.isBlocked })}
+                              data-testid={`button-toggle-block-${user.id}`}
+                            >
+                              {user.isBlocked ? 'Desbloquear' : 'Bloquear'}
+                            </Button>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="text-muted-foreground/50"
+                              onClick={() => {
+                                if (confirm('Tem certeza que deseja excluir este cliente? Esta acao nao pode ser desfeita.')) {
+                                  deleteMutation.mutate(user.id);
+                                }
+                              }}
+                              disabled={deleteMutation.isPending}
+                              data-testid={`button-delete-user-${user.id}`}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
+
+          {totalPages > 1 && (
+            <div className="flex items-center justify-center gap-4 pt-4">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+                data-testid="button-prev-page-customers"
+              >
+                <ChevronLeft className="w-4 h-4 mr-1" />
+                Anterior
+              </Button>
+              <span className="text-sm text-muted-foreground">
+                Pagina {currentPage} de {totalPages}
+              </span>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages}
+                data-testid="button-next-page-customers"
+              >
+                Proxima
+                <ChevronRight className="w-4 h-4 ml-1" />
+              </Button>
             </div>
           )}
-        </CardContent>
-      </Card>
+        </>
+      )}
+
+      <Dialog open={detailsOpen} onOpenChange={setDetailsOpen}>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-xl">
+              <UserIcon className="w-5 h-5 text-primary" />
+              Detalhes do Cliente
+            </DialogTitle>
+          </DialogHeader>
+
+          {selectedCustomer && (
+            <div className="space-y-6">
+              <Card>
+                <CardContent className="pt-6">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label className="text-muted-foreground text-xs">Nome</Label>
+                      <p className="font-medium" data-testid="text-customer-name">{selectedCustomer.name}</p>
+                    </div>
+                    <div>
+                      <Label className="text-muted-foreground text-xs">WhatsApp</Label>
+                      <p className="font-medium flex items-center gap-1" data-testid="text-customer-whatsapp">
+                        <Phone className="w-3 h-3" />
+                        {selectedCustomer.whatsapp}
+                      </p>
+                    </div>
+                    <div>
+                      <Label className="text-muted-foreground text-xs">Cadastrado em</Label>
+                      <p className="font-medium" data-testid="text-customer-created">{formatDate(selectedCustomer.createdAt)}</p>
+                    </div>
+                    <div>
+                      <Label className="text-muted-foreground text-xs">Status</Label>
+                      <Badge className={selectedCustomer.isBlocked ? 'bg-red-500/20 text-red-300' : 'bg-green-500/20 text-green-300'}>
+                        {selectedCustomer.isBlocked ? 'Bloqueado' : 'Ativo'}
+                      </Badge>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <div>
+                <h3 className="font-semibold flex items-center gap-2 mb-3">
+                  <MapPin className="w-4 h-4 text-primary" />
+                  Enderecos ({customerAddresses.length})
+                </h3>
+                {customerAddresses.length === 0 ? (
+                  <Card>
+                    <CardContent className="py-6 text-center text-muted-foreground">
+                      Nenhum endereco cadastrado
+                    </CardContent>
+                  </Card>
+                ) : (
+                  <div className="space-y-2">
+                    {customerAddresses.map(addr => (
+                      <Card key={addr.id}>
+                        <CardContent className="py-3 px-4">
+                          <div className="flex items-start justify-between gap-2">
+                            <div>
+                              <p className="font-medium text-sm">
+                                {addr.street}, {addr.number}
+                                {addr.complement && ` - ${addr.complement}`}
+                              </p>
+                              <p className="text-sm text-muted-foreground">
+                                {addr.neighborhood} - {addr.city}/{addr.state}
+                              </p>
+                              <p className="text-xs text-muted-foreground">CEP: {addr.zipCode}</p>
+                              {addr.notes && (
+                                <p className="text-xs text-muted-foreground mt-1">Obs: {addr.notes}</p>
+                              )}
+                            </div>
+                            {addr.isDefault && (
+                              <Badge variant="outline" className="text-xs">Principal</Badge>
+                            )}
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <h3 className="font-semibold flex items-center gap-2 mb-3">
+                  <ShoppingBag className="w-4 h-4 text-primary" />
+                  Historico de Pedidos ({customerOrders.length})
+                </h3>
+                {customerOrders.length === 0 ? (
+                  <Card>
+                    <CardContent className="py-6 text-center text-muted-foreground">
+                      Nenhum pedido realizado
+                    </CardContent>
+                  </Card>
+                ) : (
+                  <>
+                    <Card className="mb-3">
+                      <CardContent className="py-3 px-4">
+                        <div className="flex items-center justify-between gap-4 flex-wrap">
+                          <div>
+                            <p className="text-xs text-muted-foreground">Total de Pedidos</p>
+                            <p className="font-semibold">{customerOrders.length}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-muted-foreground">Entregues</p>
+                            <p className="font-semibold">{customerOrders.filter(o => o.status === 'delivered').length}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-muted-foreground">Total Gasto</p>
+                            <p className="font-semibold text-primary">{formatCurrency(customerTotalSpent)}</p>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                    <ScrollArea className="h-48">
+                      <div className="space-y-2 pr-4">
+                        {customerOrders.slice(0, 10).map(order => (
+                          <Card key={order.id}>
+                            <CardContent className="py-2 px-4">
+                              <div className="flex items-center justify-between gap-2 flex-wrap">
+                                <div>
+                                  <p className="text-xs text-muted-foreground">#{order.id.slice(0, 8)}</p>
+                                  <p className="text-sm">{formatDate(order.createdAt)}</p>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <StatusBadge status={order.status as OrderStatus} />
+                                  <span className="font-medium text-primary">{formatCurrency(order.total)}</span>
+                                </div>
+                              </div>
+                            </CardContent>
+                          </Card>
+                        ))}
+                      </div>
+                      <ScrollBar orientation="vertical" />
+                    </ScrollArea>
+                    {customerOrders.length > 10 && (
+                      <p className="text-xs text-muted-foreground text-center mt-2">
+                        Mostrando os 10 ultimos pedidos
+                      </p>
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
