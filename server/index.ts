@@ -101,10 +101,13 @@ app.use((req, res, next) => {
     throw err;
   });
 
-  // importantly only setup vite in development and after
-  // setting up all the other routes so the catch-all route
-  // doesn't interfere with the other routes
-  if (process.env.NODE_ENV === "production") {
+  // In production with FRONTEND_URL set, we're in API-only mode (Render deployment)
+  // Otherwise, serve static files or setup Vite for development
+  const isApiOnlyMode = process.env.NODE_ENV === "production" && process.env.FRONTEND_URL;
+  
+  if (isApiOnlyMode) {
+    log("Running in API-only mode (frontend served from Vercel)");
+  } else if (process.env.NODE_ENV === "production") {
     serveStatic(app);
   } else {
     const { setupVite } = await import("./vite");

@@ -17,8 +17,8 @@ This project is configured for free-tier deployment on Vercel and Render.
 4. Configure:
    - **Name**: `vibe-drinks-api`
    - **Environment**: `Node`
-   - **Build Command**: `npm install && npm run build`
-   - **Start Command**: `npm run start`
+   - **Build Command**: `npm ci --include=dev && npx tsx script/build-server.ts`
+   - **Start Command**: `node dist/index.cjs`
    - **Instance Type**: Free
 
 5. Add Environment Variables in Render Dashboard:
@@ -78,8 +78,9 @@ FRONTEND_URL=https://your-app.vercel.app
 ### Scripts Available
 
 - `npm run dev` - Development (Replit)
-- `npm run build` - Build both frontend and backend
+- `npm run build` - Build both frontend and backend (for Replit)
 - `npm run start` - Start production server
+- `npx tsx script/build-server.ts` - Build server only (for Render)
 
 ### Supabase Configuration
 
@@ -98,12 +99,14 @@ The backend is configured to accept requests from:
 **API not responding:**
 - Check Render logs
 - Ensure environment variables are set correctly
-- Wait for cold start if service was sleeping
+- Wait for cold start if service was sleeping (free tier sleeps after 15 min)
 
 **CORS errors:**
 - Verify `FRONTEND_URL` is set correctly in Render
-- Include protocol (https://)
+- Include protocol (https://) - e.g., `https://your-app.vercel.app`
+- Do NOT include trailing slash
 
 **Build failures:**
 - Check Node version (should be 18 or 20)
 - Verify all dependencies are in package.json
+- Make sure build command is exactly: `npm ci --include=dev && npx tsx script/build-server.ts`
