@@ -1,9 +1,9 @@
-modules = ["nodejs-20", "web", "postgresql-16"]
+modules = ["nodejs-20", "web"]
 run = "npm run dev"
 hidden = [".config", ".git", "generated-icon.png", "node_modules", "dist"]
 
 [nix]
-channel = "stable-24_05"
+channel = "stable-25_05"
 
 [deployment]
 deploymentTarget = "autoscale"
@@ -80,6 +80,7 @@ waitForPort = 5000
 VITE_SUPABASE_URL = "https://bdiqskitwcryglxfkftm.supabase.co"
 VITE_SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJkaXFza2l0d2NyeWdseGZrZnRtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUwNzE5ODQsImV4cCI6MjA4MDY0Nzk4NH0.cKgLZdQmTZuYAfp20mmoqqC6uAhrpelC2eEFpW8z7kc"
 SUPABASE_DATABASE_URL = "postgresql://postgres.bdiqskitwcryglxfkftm:VODN91wq7V1arlgv@aws-0-us-west-2.pooler.supabase.com:5432/postgres"
+SUPABASE_URL = "https://bdiqskitwcryglxfkftm.supabase.co"
 
 [agent]
 integrations = ["javascript_object_storage:1.0.0"]
